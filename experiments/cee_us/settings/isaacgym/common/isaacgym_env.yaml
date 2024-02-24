@@ -1,0 +1,7 @@
+env: "IsaacGymEnv"
+env_params:
+  task: "FrankaCubeStack"
+  num_envs: 5
+  headless: False
+  isaacgymenvs_path: ""
+  show_cfg: True

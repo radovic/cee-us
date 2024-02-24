@@ -3,6 +3,7 @@ import os
 import time
 import warnings
 
+import isaacgym
 import torch
 
 from mbrl import allogger, torch_helpers

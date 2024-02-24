@@ -44,10 +44,13 @@ def env_from_string(env_string, wrappers=[], **env_params):
         # - GYM ROBOTICS CLASSICS - #
         "FetchPickAndPlace": (".robotics", "FetchPickAndPlace"),
         "FetchReach": (".robotics", "FetchReach"),
+        # - ISAACGYM ENVIRONMENT - #
+        "IsaacGymEnv": (".isaacgym_env", "IsaacGym"),
     }
     if env_string in env_dict:
         env_package, env_class = env_dict[env_string]
-        _check_for_mujoco_lock(env_package)
+        if env_package != '.isaacgym':
+            _check_for_mujoco_lock(env_package)
         module = import_module(env_package, "mbrl.environments")
         cls = getattr(module, env_class)
         env = cls(**env_params, name=env_string)
