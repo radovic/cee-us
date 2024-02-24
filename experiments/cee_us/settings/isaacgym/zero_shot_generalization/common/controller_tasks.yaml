@@ -6,7 +6,7 @@ env_params:
   task: "FrankaCubeStack"
   num_envs: 5
   headless: False
-  isaacgymenvs_path: ""
+  isaacgymenvs_path: "./mbrl/environments/isaacgymenv/custom_envs"
   show_cfg: True
 
 # Task choices: [FrankaCubeStack]

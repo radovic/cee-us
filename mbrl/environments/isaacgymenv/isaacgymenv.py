@@ -32,7 +32,12 @@ class IsaacGymEnv(utils.EzPickle):
         self.viewer = None # TODO: Check if needed
         self.metadata = {
             "render.modes": ["human", "rgb_array"],
-        } # TODO: Check if needed
+        }
+
+        # TODO: improve this
+        # Get body names
+        self.agent_dim, self.object_dyn_dim, self.object_stat_dim, self.nObj = self.ig_env.get_object_dims()
+        self.env_body_names = [f'cube{i}' for i in range(self.nObj)]
 
         self.initial_state = copy.deepcopy(self.ig_env.gym.get_sim_params(self.ig_env.sim))
 
