@@ -1,4 +1,4 @@
-gym==0.17.2
+gym # ==0.17.2
 mujoco-py==2.0.2.0
 -e git+https://github.com/martius-lab/smart-settings@85e42b2eff23c3ea1ddc544e8a1784841da64735#egg=smart_settings
 numpy==1.23.5

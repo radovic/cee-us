@@ -1,0 +1,4 @@
+{
+  "name": "Cyclic",
+  "__import__": "examples/importing/load_twice_cyclic_should_fail.json"
+}
