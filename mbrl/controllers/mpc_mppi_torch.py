@@ -16,6 +16,15 @@ from mbrl.rolloutbuffer import RolloutBuffer, SimpleRolloutBuffer
 from mbrl.torch_helpers import to_tensor
 
 class TorchMpcMPPI(MpcController):
+    """
+        Model Predivtive Path Integral https://homes.cs.washington.edu/~bboots/files/InformationTheoreticMPC.pdf
+
+        Controller computes cost for candidate trajectories around a (mean) nominal action tensor self.u_.
+        The update to the mean tensor is a weighted sum of the trajectories. At the end of each
+        get_action call, we shift self.u_ to the left, effectively using our pre-computed actions as the new mean vector
+        to generate trajectories around.
+    
+    """
     def __init__(self, *, action_sampler_params, use_async_action, logging=True, fully_deterministic=False, **kwargs):
 
         super().__init__(**kwargs)
@@ -72,17 +81,17 @@ class TorchMpcMPPI(MpcController):
         # nominal actions buffer
         self.u_ = torch.zeros(self.dim_samples, device=torch_helpers.device, dtype=torch.float32)
         
-        self.mean_ = torch.zeros(self.dim_samples, device=torch_helpers.device, dtype=torch.float32)
+        # standart deviation of error
         self.std_ = torch.ones(self.dim_samples, device=torch_helpers.device, dtype=torch.float32)
 
-        self.action_high_tensor = torch.zeros_like(self.mean_, device=torch_helpers.device, dtype=torch.float32)
+        self.action_high_tensor = torch.zeros_like(self.u_, device=torch_helpers.device, dtype=torch.float32)
         self.action_high_tensor[..., :] = torch.from_numpy(self.env.action_space.high).float().to(torch_helpers.device)
-        self.action_low_tensor = torch.zeros_like(self.mean_, device=torch_helpers.device, dtype=torch.float32)
+        self.action_low_tensor = torch.zeros_like(self.u_, device=torch_helpers.device, dtype=torch.float32)
         self.action_low_tensor[..., :] = torch.from_numpy(self.env.action_space.low).float().to(torch_helpers.device)
 
         self.delta_u_ = torch.zeros(
             self.num_sim_traj,
-            *self.mean_.shape,
+            *self.u_.shape,
             device=torch_helpers.device,
             dtype=torch.float32,
         )
@@ -138,12 +147,8 @@ class TorchMpcMPPI(MpcController):
     def end_of_rollout(self, total_time, total_return, mode):
         super().end_of_rollout(total_time, total_return, mode)
 
-    def sample_action_sequences(self, obs, num_traj, time_slice=None):
+    def sample_action_sequences(self):
     
-        # shift the previous best action sequence one timestep, as we've used the first action already.
-        u = torch.concat([self.u_[1:], 
-                         torch.zeros(size=(1, self.a_dim), device=torch_helpers.device, dtype=torch.float32)], dim=0)
-
         # (num_trajs, horizon_n, a_dim)
         torch.randn(size=self.delta_u_.shape,
                               device=torch_helpers.device, dtype=torch.float32, out=self.delta_u_)
@@ -152,7 +157,7 @@ class TorchMpcMPPI(MpcController):
         torch.mul(self.delta_u_, self.std_, out=self.delta_u_)
 
         # broadcast the deltas onto the nominal actions.
-        action_sequences = self.delta_u_ + u[None, ...]
+        action_sequences = self.delta_u_ + self.u_[None, ...]
         
         # clip for legal action range
         torch.min(action_sequences, self.action_high_tensor, out=action_sequences)
@@ -162,12 +167,26 @@ class TorchMpcMPPI(MpcController):
     
     @torch.no_grad()
     def get_action(self, obs, state, mode="train"):
+        """
+            Plans for the next action `self.horizon` steps into the future. 
 
+            Args:
+
+                obs : current observation from the environment. Shape (o_dim,)
+                state: current state of the forward model (only used in stateful models). Shape (fwmodel_state_dim,)
+                mode: flag to switch between evaluation and training mode.
+
+            Returns:
+
+                executed_action: Action at index 0 of the best found action sequence. Shape (a_dim,)
+        
+        """
         self.forward_model_state = self.forward_model.got_actual_observation_and_env_state(
             observation=obs, env_state=state, model_state=self.forward_model_state
         )
 
-        action_sequences = self.sample_action_sequences(obs, self.num_sim_traj)
+        # sample action sequences v around the nominal (mean) action sequence u
+        action_sequences = self.sample_action_sequences()
         
         # repeat the obs to match num_trajs. shape: (num_trajs, o_dim)
         obs_ = torch.atleast_2d(torch.from_numpy(obs)).repeat(self.num_sim_traj, 1).to(torch_helpers.device)
@@ -196,15 +215,22 @@ class TorchMpcMPPI(MpcController):
         # calculate weighting. The less cost a action sequence has accumulated, the 
         # heavier its influence on the best action sequence should be.
         torch.subtract(self.costs_, self.costs_.min(0)[0], out=self.costs_)
+        torch.mul(self.costs_, 1/self.temperature)
+
         w = torch.softmax(-self.costs_, dim=0)
 
-        # mult w onto self.delta_u_. This needs to follow broadcasting rules, so we need
+        # mult w onto self.delta_u_, then add to the nominal u. 
+        # This needs to follow broadcasting rules, so we need
         # to expand w's dimensions accordingly
-        self.u_ = self.u_ + torch.sum(self.delta_u_ * w[:, None, None], dim=0)
+        torch.add(self.u_, torch.sum(self.delta_u_ * w[:, None, None], dim=0), out=self.u_)
 
         # return best action
         executed_action = self.u_[0]
         executed_action = executed_action.cpu().detach().numpy()
+
+        # shift u_ (means) leftwards
+        self.u_ = torch.concat([self.u_[1:], 
+                         torch.zeros(size=(1, self.a_dim), device=torch_helpers.device, dtype=torch.float32)], dim=0)
 
         if self.mpc_hook:
             self.mpc_hook.executed_action(obs, executed_action)
@@ -266,6 +292,9 @@ class TorchMpcMPPI(MpcController):
         relative_init,
         execute_best_elite,
         use_ensemble_cost_std,
+        temperature,
+        min_std,
+        max_std
     ):
 
         self.alpha = alpha
@@ -282,6 +311,10 @@ class TorchMpcMPPI(MpcController):
         self.relative_init = relative_init
         self.execute_best_elite = execute_best_elite
         self.use_ensemble_cost_std = use_ensemble_cost_std
+        self.temperature = temperature
+        self.min_std = min_std
+        self.max_std = max_std
+
 
     def _check_validity_parameters(self):
 

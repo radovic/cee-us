@@ -1,4 +1,4 @@
-controller: "mpc-mppi-torch"
+controller: "mpc-mppi-elites-torch"
 controller_params:
   horizon: 30
   num_simulated_trajectories: 128
@@ -24,6 +24,7 @@ controller_params:
     min_std : 0.5
     max_std : 2.0
     
+
   verbose: false
   do_visualize_plan: false
   use_async_action: false
