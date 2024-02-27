@@ -206,7 +206,6 @@ class OpenLoopPolicy(ParallelController):
         :param obs: shape [p, d] (number parallel runs, state-dim)
         :param mode: unused
         """
-
         if self.action_sequence_iterator is None:
             self.action_sequence_iterator = ArrayIteratorParallelRowwise(
                 self.action_sequences,

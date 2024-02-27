@@ -63,10 +63,8 @@ class IsaacGymEnv(utils.EzPickle):
             isaacgymenvs_path,
         )
 
-    '''
     def set_state(self):
-        raise NotImplementedError
-    '''
+        raise NotImplementedError('Setting state is not implemented yet')
 
     def seed(self, seed):
         self.np_random, seed = seeding.np_random(seed)
@@ -86,18 +84,23 @@ class IsaacGymEnv(utils.EzPickle):
         return self.ig_env.compute_reward
 
     def step(self, action):
-        action = torch.Tensor([action] * self.num_envs).to(self.ig_env.device) # TODO: TEMPORARY: Clone the action for all environments
+        action = torch.Tensor(action).to(self.ig_env.device)
         obs, rew, done, info = self.ig_env.step(action)
-        return (obs['obs'][0].cpu().detach().numpy(), rew[0].cpu().detach().numpy(), done[0].cpu().detach().numpy(), {}) # TODO: TEMPORARY: Only return the first observation
+
+        for k, v in info.items():
+            if isinstance(v, torch.Tensor):
+                info[k] = v.cpu().detach().numpy()
+                
+        return (obs['obs'].cpu().detach().numpy(), rew.cpu().detach().numpy(), done.cpu().detach().numpy(), info)
 
     def compute_reward(self):
         return self.ig_env.compute_reward()
 
     def reset(self):
-        return self.ig_env.reset()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        return self.ig_env.reset()['obs'].cpu().detach().numpy()
 
     def _get_obs(self):
-        return self.ig_env.compute_observations()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        return self.ig_env.compute_observations()['obs'].cpu().detach().numpy()
     
     def render(self, mode="human"):
         self.ig_env.render(mode=mode)

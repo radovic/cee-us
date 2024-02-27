@@ -334,7 +334,8 @@ class RolloutManager:
                         logger.log(time_per_step, key="time_per_step")
                         logger.log(time_controller, key="time_controller")
 
-                if done:
+                # TODO: Check if done like this is correct
+                if done.all():
                     break
 
         if policy.has_state:

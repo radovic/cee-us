@@ -178,7 +178,7 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
     @torch.no_grad()
     def _update_normalizer(self, rollout_buffer: RolloutBuffer):
         latest_observations = rollout_buffer.latest_rollouts["observations"]
-        self.rnd.obs_normalizer.update(self.env.obs_preproc(latest_observations))
+        self.rnd.obs_normalizer.update(self.env.obs_preproc(latest_observations.reshape(-1, latest_observations.shape[-1])))
 
     def train_rnd(self, rollout_buffer: RolloutBuffer):
         self._update_normalizer(rollout_buffer)
@@ -239,9 +239,9 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
 
     def _model_epistemic_costs(self, rollout_buffer: RolloutBuffer):
 
-        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [p,h,obs_dim]
+        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [nenvs, p,h,obs_dim]
         rnds_of_samples_ = self.compute_intr_reward(mean_next_obs.reshape(-1, self.env.observation_space.shape[0]))
-        self._rnd_bonus_per_path = rnds_of_samples_.view(-1, self.horizon)  # [p,h]
+        self._rnd_bonus_per_path = rnds_of_samples_.view(mean_next_obs.shape[0], mean_next_obs.shape[1], self.horizon)  # [nenvs, p, h]
 
     @torch.no_grad()
     def trajectory_cost_fn(self, cost_fn, rollout_buffer: RolloutBuffer, out: torch.Tensor):

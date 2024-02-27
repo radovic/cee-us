@@ -464,16 +464,14 @@ class FrankaCubeMove(VecTask):
         return self.obs_buf
     
     def compute_object_centric_observation(self, obs, agent_dim, object_dim, object_static_dim):
-        if obs.ndim == 3:
-            obs = obs.squeeze(1)
-        elif obs.ndim == 1:
-            obs = np.expand_dims(obs, axis=0)
+        # N x num_envs x obs_dim
+        N = obs.shape[0]
 
         # TODO: This is a hacky way to get the object-centric observation. We should refactor this to be more general
         state_dict = {
-            "agent": obs[:, 10:],
-            "objects_dyn": np.concatenate((obs[:, 4:7], obs[:, :4]), axis=-1).reshape(1, -1, 7),
-            "objects_static": (obs[:, 4:7] + obs[:, 7:10]).reshape(1, -1, 3),
+            "agent": obs[..., 10:],
+            "objects_dyn": np.concatenate((obs[..., 4:7], obs[..., :4]), axis=-1).reshape(N, -1, 7),
+            "objects_static": (obs[..., 4:7] + obs[..., 7:10]),
         }
         return state_dict
     
