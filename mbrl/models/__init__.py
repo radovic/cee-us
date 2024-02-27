@@ -16,6 +16,10 @@ models_dict = {
         ".gnn_ensemble",
         "GNNForwardEnsembleModel",
     ),
+    "TDMPC2": (
+        ".tdmpc2",
+        "TDMPC2",
+    ),
 }
 
 

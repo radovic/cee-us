@@ -1,0 +1,44 @@
+__import__:
+    - "experiments/defaults.yaml"
+    - "experiments/tdmpc2/settings/common/basic.yaml"
+    - "experiments/tdmpc2/settings/playground/common/mppi.yaml"
+    - "experiments/tdmpc2/settings/playground/common/playground_env.yaml"
+    - "experiments/tdmpc2/settings/playground/common/tdmpc_worldmodel.yaml"
+
+
+pre_mainloop_hooks: [
+   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.init_model:init_model_hook"],
+   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.fill_model_eval_buffer:fill_model_eval_buffer_hook"],
+   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.print_buffer_size:print_buffer_size_hook"]
+]
+
+post_rollout_hooks: [
+   ["experiments.tdmpc2.hooks.post_rollout_hooks.interaction_metrics_playground:interaction_tracker_hook", 
+   {
+      "plot_trajs": false
+   }
+   ]
+] 
+
+eval_buffers: [
+  "datasets/playground/rollouts_eval"
+]
+
+number_of_rollouts: 10
+training_iterations: 250
+
+rollout_params:
+    render: false
+    task_horizon: 200
+
+horizon: 30
+
+controller_params: 
+    horizon: 30
+
+checkpoints:
+    save_every_n_iter: 25
+
+working_dir: "results/tdmpc2/playground/tdmpc2_mppi"
+
+device: "cuda:0"

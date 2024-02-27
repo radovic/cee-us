@@ -1,0 +1,73 @@
+forward_model: TDMPC2
+
+# TODO: There are some params which are env-specific (like action_dim, episode_length...)
+# These should probably be inferred from the env directly and appended to
+# the forward model params smart_dict via the `update_recursive` function. For
+# this, we may have to use `__reduce__()` to get mutable AttributeDicts...
+forward_model_params:
+    model_params:
+        # actor
+        log_std_min: -10
+        log_std_max: 2
+        entropy_coef: 1e-4
+
+        # critic
+        num_bins: 101
+        vmin: -10
+        vmax: +10
+
+        # architecture
+        model_size: ???
+        num_enc_layers: 2
+        enc_dim: 256
+        num_channels: 32
+        mlp_dim: 512
+        latent_dim: 512
+        task_dim: 96
+        num_q: 5
+        dropout: 0.01
+        simnorm_dim: 8
+        obs_shape : {
+            'state' : [16] # observations of shape (16,)
+        }
+        multitask : false
+        action_dim : 128
+        episode_length : 200
+        discount_denom: 5
+        discount_min: 0.95
+        discount_max: 0.995
+
+
+    train_params:
+        optimizer : 'Adam'
+        optimizer_kwargs : {
+            'lr': 0.0003
+        }
+        pi_optimizer : "Adam"
+        pi_optimizer_kwargs : {
+            'lr' : 0.0003,
+            'eps' : 0.00001
+        }
+        steps: 10_000_000
+        batch_size: 256
+        reward_coef: 0.1
+        value_coef: 0.1
+        consistency_coef: 20
+        lr: 0.0003
+        rho: 0.5
+        enc_lr_scale: 0.3
+        grad_clip_norm: 20
+        tau: 0.01
+        discount_denom: 5
+        discount_min: 0.95
+        discount_max: 0.995
+        buffer_size: 1_000_000
+        exp_name: default
+        data_dir: ???
+
+    
+    use_input_normalization: true
+    use_output_normalization: true
+    target_is_delta: true
+    normalize_w_running_stats: true
+    
