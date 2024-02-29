@@ -7,6 +7,7 @@ import isaacgym
 import torch
 
 from mbrl import allogger, torch_helpers
+from mbrl.helpers import env_name_to_task
 from mbrl.environments import env_from_string
 from mbrl.helpers import (
     MainState,
@@ -141,6 +142,7 @@ def main(params):
             forward_model,
             iteration,
             do_initial_rollouts,
+            task=env_name_to_task(env)
         )
 
         if "post_rollout_hooks" in params:

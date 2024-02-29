@@ -9,7 +9,7 @@ from mbrl.models.tdmpc2_helpers.world_model import TDMPC2WorldModel
 
 from mbrl.models.abstract_models import ForwardModel, EnsembleModel, TrainableModel, TorchModel
 
-from mbrl.rolloutbuffer import RolloutBuffer
+from mbrl.rolloutbuffer import RolloutBuffer, SimpleRolloutBuffer
 from mbrl.controllers.abstract_controller import Controller
 from configparser import ConfigParser
 from typing import Sequence, Tuple
@@ -26,7 +26,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         self._cfg = cfg
         self.cfg = cfg['model_params']
         self.train_cfg = cfg['train_params']
-        self.multitask = self.cfg.multitask
+        self.multitask = self._cfg["multitask"]
 
         # TODO: maybe join both config files?
         
@@ -40,7 +40,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             {'params': self.model._dynamics.parameters()},
             {'params': self.model._reward.parameters()},
             {'params': self.model._Qs.parameters()},
-            {'params': self.model._task_emb.parameters() if self.cfg.multitask else []}],
+            {'params': self.model._task_emb.parameters() if self.multitask else []}],
             **self.train_cfg.optimizer_kwargs
         )
 
@@ -94,14 +94,14 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         return a.cpu()
 
     @torch.no_grad()
-    def _estimate_value(self, z, actions, task):
+    def _estimate_value(self, z, actions, task, horizon : int):
         """Estimate value of a trajectory starting at latent state z and executing given actions."""
         G, discount = 0, 1
-        for t in range(self.cfg.horizon):
+        for t in range(horizon):
             reward = math.two_hot_inv(self.model.reward(z, actions[t], task), self.cfg)
             z = self.model.next(z, actions[t], task)
             G += discount * reward
-            discount *= self.discount[torch.tensor(task)] if self.cfg.multitask else self.discount
+            discount *= self.discount[torch.tensor(task)] if self.multitask else self.discount
         return G + discount * self.model.Q(z, self.model.pi(z, task)[1], task, return_type='avg')
 
     @torch.no_grad()
@@ -118,6 +118,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         Returns:
             torch.Tensor: Action to take in the environment.
         """		
+
         # Sample policy trajectories
         if self.cfg.num_pi_trajs > 0:
             pi_actions = torch.empty(self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
@@ -144,7 +145,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             actions[:, self.cfg.num_pi_trajs:] = (mean.unsqueeze(1) + std.unsqueeze(1) * \
                 torch.randn(self.cfg.horizon, self.cfg.num_samples-self.cfg.num_pi_trajs, self.cfg.action_dim, device=std.device)) \
                 .clamp(-1, 1)
-            if self.cfg.multitask:
+            if self.multitask:
                 actions = actions * self.model._action_masks[task]
 
             # Compute elite actions
@@ -159,7 +160,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             mean = torch.sum(score.unsqueeze(0) * elite_actions, dim=1) / (score.sum(0) + 1e-9)
             std = torch.sqrt(torch.sum(score.unsqueeze(0) * (elite_actions - mean.unsqueeze(1)) ** 2, dim=1) / (score.sum(0) + 1e-9)) \
                 .clamp_(self.cfg.min_std, self.cfg.max_std)
-            if self.cfg.multitask:
+            if self.multitask:
                 mean = mean * self.model._action_masks[task]
                 std = std * self.model._action_masks[task]
 
@@ -214,7 +215,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             torch.Tensor: TD-target.
         """
         pi = self.model.pi(next_z, task)[1]
-        discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
+        discount = self.discount[task].unsqueeze(-1) if self.multitask else self.discount
         return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
     def update(self, buffer):
@@ -291,10 +292,45 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             "pi_scale": float(self.scale.value),
         }
 
+    @torch.no_grad
     def predict_n_steps(
-        self, *, start_observations: np.ndarray, start_states: Sequence, policy: Controller, horizon
+        self, *, start_observations: np.ndarray, start_states: Sequence, policy: Controller, horizon, task
     ) -> Tuple[RolloutBuffer, np.ndarray]:
-        raise NotImplementedError
+
+        all_latents_ = []
+        all_actions_ = []
+
+        states = start_states
+
+        # preprocessing -> removes goals from playgroundwGoals env. Reduces obsdim from 48 to 40
+        start_observations = self.env.obs_preproc(start_observations)
+
+        # encode start_observations
+        zs = self.model.encode(start_observations, task=task)
+        all_latents_.append(zs)
+
+        # iterate the forward model
+        for i in range(horizon):
+            # we query open loop policy, which just returns the next action.
+            actions = policy.get_action(obs=zs, state=states)
+            zs, states, rewards = self.model.predict(zs, actions, task=task)
+
+            all_actions_.append(actions)
+            all_latents_.append(zs)
+
+        # from [h,p,d] to [p,h,d] p is for parallel and h is for horizon
+        all_observations = torch.stack(all_latents_[:-1]).permute(1, 0, 2)
+        all_next_observations = torch.stack(all_latents_[1:]).permute(1, 0, 2)
+        all_actions =  torch.stack(all_actions_).permute(1, 0, 2)
+
+        rollouts = SimpleRolloutBuffer(
+            observations=all_observations,
+            next_observations=all_next_observations,
+            actions=all_actions,
+        )
+
+        return rollouts, None
+
 
     def get_state(self):
         return None
@@ -322,13 +358,17 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         self.model.load_state_dict(state_dict["model"])
 
     def reset(self, observation):
-        raise NotImplementedError
+        return None
 
     def got_actual_observation_and_env_state(self, *, observation, env_state=None, model_state=None):
-        raise NotImplementedError
+        return None
 
-    def rollout_generator(self, start_states, start_observations, horizon, policy, mode=None):
-        raise NotImplementedError
+    def rollout_generator(self, start_states, start_observations, horizon, policy, mode=None, task=None):
+        
+        states = start_states
+        obs = start_observations
+        z = self.model.encode(obs, task=task)
+        
 
     def rollout_field_names(self):
         raise NotImplementedError
@@ -339,5 +379,6 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         return self.model.next(z, actions, task=None)
     
     def train(self, buffer: RolloutBuffer):
-        self.model.train()
+        
         raise NotImplementedError
+        self.model.train()

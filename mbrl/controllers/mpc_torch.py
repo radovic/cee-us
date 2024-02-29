@@ -281,7 +281,7 @@ class TorchMpcICem(MpcController):
         return action_sequence_repeated
 
     @torch.no_grad()
-    def get_action(self, obs, state, mode="train"):
+    def get_action(self, obs, state, mode="train", **kwargs):
 
         if not self.was_reset:
             raise AttributeError("beginning_of_rollout() needs to be called before")

@@ -5,6 +5,10 @@ forward_model: TDMPC2
 # the forward model params smart_dict via the `update_recursive` function. For
 # this, we may have to use `__reduce__()` to get mutable AttributeDicts...
 forward_model_params:
+    task: mbrl.environments.playground.PlaygroundwGoals
+    obs: state
+    multitask : false
+
     model_params:
         # actor
         log_std_min: -10
@@ -23,15 +27,16 @@ forward_model_params:
         num_channels: 32
         mlp_dim: 512
         latent_dim: 512
-        task_dim: 96
+        task_dim: 0 # not multitask -> task dim is zero
         num_q: 5
         dropout: 0.01
         simnorm_dim: 8
         obs_shape : {
-            'state' : [16] # observations of shape (16,)
+            'state' : [40] # observations of shape (48,) for the playgroundwgoals env. 
+                            # by preprocessing, we remove the goal information in the tensor,
+                            # which reduces the dims to 40.
         }
-        multitask : false
-        action_dim : 128
+        action_dim : 2 # the dof in the playground w goals env is 2.
         episode_length : 200
         discount_denom: 5
         discount_min: 0.95

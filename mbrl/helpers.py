@@ -21,6 +21,9 @@ from mbrl.rolloutbuffer import RolloutBuffer
 
 idx_mapping_type = "none"
 
+TASK_MAPPER = {
+    'mbrl.environments.playground_env_wgoals.PlaygroundwGoals' : 1,
+}
 
 def copy_func(f):
     """Based on http://stackoverflow.com/a/6528148/190597 (Glenn Maynard)"""
@@ -254,6 +257,7 @@ def gen_rollouts(
     forward_model,
     iteration,
     do_initial_rollouts,
+    **kwargs
 ):
 
     if iteration == 0 and do_initial_rollouts:
@@ -278,6 +282,7 @@ def gen_rollouts(
                 mode="train",
                 name="train",
                 no_rollouts=number_of_rollouts,
+                **kwargs
             )
         )
 
@@ -336,3 +341,11 @@ def hook_executer(
         module = import_module(module_str)
         fn = getattr(module, fn_str)
         fn(_locals, _globals, **kwargs)
+
+
+
+def env_name_to_task(env) -> int:
+
+    env_name = env.__repr__()[1:].split(' ')[0] # "<mbrl.environments ...>"" -> "mbrl.environments. ..."
+    task = TASK_MAPPER[env_name]
+    return task

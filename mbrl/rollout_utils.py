@@ -123,6 +123,7 @@ class RolloutManager:
         no_rollouts=1,
         use_tqdm=True,
         desc="rollout_num",
+        **kwargs
     ):
         if self.env.supports_live_rendering and render and self.record:
             self.video, self.video_path = self.setup_video(name)
@@ -133,7 +134,7 @@ class RolloutManager:
 
         if self.do_run_in_parallel(policy, mode):
             assert isinstance(policy, ParallelController)
-            return self.par_sample(policy, render, mode, start_ob, start_state, no_rollouts)
+            return self.par_sample(policy, render, mode, start_ob, start_state, no_rollouts, **kwargs)
         else:
             temp_start_ob = [None] * no_rollouts if start_ob is None else start_ob
             temp_start_state = [None] * no_rollouts if start_state is None else start_state
@@ -150,6 +151,7 @@ class RolloutManager:
                         mode,
                         temp_start_ob[i],
                         temp_start_state[i],
+                        **kwargs
                     )
                 )
                 stat_dict["avg-ret"] = np.mean([np.sum(r["rewards"]) for r in rollouts])
@@ -167,7 +169,7 @@ class RolloutManager:
             "post_env_step_hooks": self.post_env_step_hooks,
         }
 
-    def sample_env(self, policy, logger, render: bool, mode, start_ob, start_state):
+    def sample_env(self, policy, logger, render: bool, mode, start_ob, start_state, **kwargs):
         # this method is also used in the parallel threads that is why it is
         # purely functional (no state)
         return RolloutManager._sample(
@@ -180,9 +182,10 @@ class RolloutManager:
             start_state=start_state,
             logging=self.logging,
             **self.create_sample_params_dict(True),
+            **kwargs
         )
 
-    def par_sample(self, policy, render: bool, mode, start_ob, start_state, no_rollouts=1):
+    def par_sample(self, policy, render: bool, mode, start_ob, start_state, no_rollouts=1, **kwargs):
 
         chunks = np.array_split(range(no_rollouts), self.num_parallel)
         chunks = [c for c in chunks if len(c) > 0]
@@ -234,6 +237,7 @@ class RolloutManager:
         video_path=None,
         pre_env_step_hooks=[],
         post_env_step_hooks=[],
+        **kwargs
     ):
         if start_ob is not None and isinstance(env, GroundTruthSupportEnv):
             if start_state is None:
@@ -266,7 +270,7 @@ class RolloutManager:
                     start_time = time.time()
                 state = RolloutManager.supply_env_state(env, use_env_states)
                 try:
-                    ac = policy.get_action(ob, state=state, mode=mode)
+                    ac = policy.get_action(ob, state=state, mode=mode, **kwargs)
                     if isinstance(env, RealRobotEnvInterface):
                         time_controller = time.time() - start_time
 

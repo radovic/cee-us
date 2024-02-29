@@ -166,7 +166,7 @@ class TorchMpcMPPI(MpcController):
         return action_sequences
     
     @torch.no_grad()
-    def get_action(self, obs, state, mode="train"):
+    def get_action(self, obs, state, mode="train", **kwargs):
         """
             Plans for the next action `self.horizon` steps into the future. 
 
@@ -194,7 +194,7 @@ class TorchMpcMPPI(MpcController):
         # Monte Carlo Simulation 
         rollouts = self.simulate_trajectories(obs=obs_, 
                                               state=self.forward_model_state, 
-                                              action_sequences=action_sequences)
+                                              action_sequences=action_sequences, **kwargs)
 
         # writes the costs into pre-allocated buffer self.costs_.
         # In case we have ensembles, we 
@@ -256,7 +256,7 @@ class TorchMpcMPPI(MpcController):
         return executed_action
 
     @torch.no_grad()
-    def simulate_trajectories(self, *, obs, state, action_sequences: torch.tensor) -> RolloutBuffer:
+    def simulate_trajectories(self, *, obs, state, action_sequences: torch.tensor, **kwargs) -> RolloutBuffer:
         """
         :param obs: current starting observation
         :param state: current starting state of forward model
@@ -272,7 +272,8 @@ class TorchMpcMPPI(MpcController):
                 start_observations=obs,
                 start_states=self.start_states_,
                 policy=OpenLoopPolicy(action_sequences),
-                horizon=self.horizon,
+                horizon=self.horizon, 
+                **kwargs
             )[0]
         
     def _parse_action_sampler_params(

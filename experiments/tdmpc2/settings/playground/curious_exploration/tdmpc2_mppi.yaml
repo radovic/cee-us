@@ -1,7 +1,7 @@
 __import__:
     - "experiments/defaults.yaml"
     - "experiments/tdmpc2/settings/common/basic.yaml"
-    - "experiments/tdmpc2/settings/playground/common/mppi.yaml"
+    - "experiments/tdmpc2/settings/playground/common/tdmpc_mppi.yaml"
     - "experiments/tdmpc2/settings/playground/common/playground_env.yaml"
     - "experiments/tdmpc2/settings/playground/common/tdmpc_worldmodel.yaml"
 
