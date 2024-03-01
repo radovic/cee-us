@@ -8,8 +8,10 @@ forward_model_params:
     task: mbrl.environments.playground.PlaygroundwGoals
     obs: state
     multitask : false
-
+    
     model_params:
+        horizon : 5
+
         # actor
         log_std_min: -10
         log_std_max: 2
@@ -23,10 +25,10 @@ forward_model_params:
         # architecture
         model_size: ???
         num_enc_layers: 2
-        enc_dim: 256
+        enc_dim: 16
         num_channels: 32
-        mlp_dim: 512
-        latent_dim: 512
+        mlp_dim: 16
+        latent_dim: 16
         task_dim: 0 # not multitask -> task dim is zero
         num_q: 5
         dropout: 0.01
@@ -41,7 +43,7 @@ forward_model_params:
         discount_denom: 5
         discount_min: 0.95
         discount_max: 0.995
-
+        rho: 0.5
 
     train_params:
         optimizer : 'Adam'
@@ -59,7 +61,6 @@ forward_model_params:
         value_coef: 0.1
         consistency_coef: 20
         lr: 0.0003
-        rho: 0.5
         enc_lr_scale: 0.3
         grad_clip_norm: 20
         tau: 0.01

@@ -9,7 +9,8 @@ __import__:
 pre_mainloop_hooks: [
    ["experiments.tdmpc2.hooks.pre_mainloop_hooks.init_model:init_model_hook"],
    ["experiments.tdmpc2.hooks.pre_mainloop_hooks.fill_model_eval_buffer:fill_model_eval_buffer_hook"],
-   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.print_buffer_size:print_buffer_size_hook"]
+   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.print_buffer_size:print_buffer_size_hook"],
+   ["experiments.tdmpc2.hooks.pre_mainloop_hooks.assert_parameter_validity:assert_equals_parameters"]
 ]
 
 post_rollout_hooks: [
@@ -24,17 +25,17 @@ eval_buffers: [
   "datasets/playground/rollouts_eval"
 ]
 
-number_of_rollouts: 10
+number_of_rollouts: 2
 training_iterations: 250
 
 rollout_params:
     render: false
     task_horizon: 200
 
-horizon: 30
+horizon: 5
 
 controller_params: 
-    horizon: 30
+    horizon: 5
 
 checkpoints:
     save_every_n_iter: 25

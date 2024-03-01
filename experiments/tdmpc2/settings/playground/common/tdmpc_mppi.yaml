@@ -1,7 +1,7 @@
 controller: "tdmpc-mppi-elites-torch"
 controller_params:
-  horizon: 30
-  num_simulated_trajectories: 128
+  horizon: 3
+  num_simulated_trajectories: 8
   factor_decrease_num: 1
   cost_along_trajectory: "sum"
   use_env_reward: false

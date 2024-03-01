@@ -12,7 +12,8 @@ from mbrl.models.abstract_models import ForwardModel, EnsembleModel, TrainableMo
 from mbrl.rolloutbuffer import RolloutBuffer, SimpleRolloutBuffer
 from mbrl.controllers.abstract_controller import Controller
 from configparser import ConfigParser
-from typing import Sequence, Tuple
+from typing import Sequence, Tuple, Optional
+from mbrl.helpers import env_name_to_task
 
 class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
     """
@@ -27,7 +28,8 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         self.cfg = cfg['model_params']
         self.train_cfg = cfg['train_params']
         self.multitask = self._cfg["multitask"]
-
+        self.batch_size = self._cfg['train_params'].batch_size
+        
         # TODO: maybe join both config files?
         
         self.device = torch_helpers.device
@@ -218,17 +220,13 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         discount = self.discount[task].unsqueeze(-1) if self.multitask else self.discount
         return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
-    def update(self, buffer):
+    # TODO: in eqn (3) in the paper, the expectation is computed over a sequence of shape [h, p, d] not just [p, d].
+    #       Instead of sampling uniformly from the buffer, we probably have to sample trajectories instead.
+    def update(self, obs, action, reward, task):
         """
         Main update function. Corresponds to one iteration of model learning.
-        
-        Args:
-            buffer (common.buffer.Buffer): Replay buffer.
-        
-        Returns:
-            dict: Dictionary of training statistics.
         """
-        obs, action, reward, task = buffer.sample()
+        batch_size = obs.shape[0]
 
         # Compute targets
         with torch.no_grad():
@@ -236,14 +234,15 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
             td_targets = self._td_target(next_z, reward, task)
 
         # Prepare for update
-        self.optim.zero_grad(set_to_none=True)
+        self.optimizer.zero_grad(set_to_none=True)
         self.model.train()
 
         # Latent rollout
-        zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
+        zs = torch.empty(self.cfg.horizon+1, batch_size, self.cfg.latent_dim, device=self.device)
         z = self.model.encode(obs[0], task)
         zs[0] = z
         consistency_loss = 0
+
         for t in range(self.cfg.horizon):
             z = self.model.next(z, action[t], task)
             consistency_loss += F.mse_loss(z, next_z[t]) * self.cfg.rho**t
@@ -364,7 +363,7 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         return None
 
     def rollout_generator(self, start_states, start_observations, horizon, policy, mode=None, task=None):
-        
+        raise NotImplementedError
         states = start_states
         obs = start_observations
         z = self.model.encode(obs, task=task)
@@ -378,7 +377,49 @@ class TDMPC2(ForwardModel, EnsembleModel, TrainableModel, TorchModel):
         z = self.model.encode(observations, task=task)
         return self.model.next(z, actions, task=None)
     
-    def train(self, buffer: RolloutBuffer):
+    def train(
+        self,
+        rollout_buffer: RolloutBuffer,
+        eval_buffer: Optional[RolloutBuffer] = None,
+        maybe_update_normalizer=True
+    ):
+
+        num_rollouts = len(rollout_buffer)
+        # TODO: reshape from [num_rollouts * episode_length, d] -> [num_rollouts, episode_length, d]
+        observations = self.env.obs_preproc(rollout_buffer['observations']).reshape(num_rollouts, self.cfg.episode_length, -1)
+        actions = rollout_buffer["actions"].reshape(num_rollouts, self.cfg.episode_length, -1)
+        rewards = rollout_buffer["rewards"].reshape(num_rollouts, self.cfg.episode_length, -1)
+
+        assert self.multitask == False, "Current Implementation doesn't support multitask"
+        current_task = env_name_to_task(self.env)
+        tasks = [current_task] * len(observations)
+        training_statistics = {}
+
+        # @Vera we should take a look at how exactly the batching works in the tdmpc implementation. 
+        # Im not sure, but i think for tdmpc its important to keep rollouts separated. 
+        # In Equation (3) of TDMPC2 they compute the loss as an expectation over a replay buffer and sample
+        # trajectories of length `H` which is their horizon. So the last two dimensions of our tensors should be [h, d].
+        # We should then probably take all observations and reshape from [num_rollouts, episode_length, d] into [b, h, d].
+        # This would require some care, better discuss this more with marco and cansu... -> asked about this in slack
+
+        """# simple batching
+        batches_number = (len(observations) % self.batch_size != 0) + len(observations) // self.batch_size 
         
+        
+        for i in range(batches_number):
+
+            # one batch should have size (h, d).
+            obs = torch_helpers.to_tensor(observations[i*self.batch_size : (i+1) * self.batch_size]).to(torch_helpers.device)
+            acts = torch_helpers.to_tensor(actions[i*self.batch_size : (i+1) * self.batch_size]).to(torch_helpers.device)
+            r = torch_helpers.to_tensor(rewards[i*self.batch_size : (i+1) * self.batch_size]).to(torch_helpers.device)
+            t = torch.Tensor(tasks[i*self.batch_size : (i+1) * self.batch_size]).to(torch_helpers.device)
+
+            # TODO: reshape to [h, b, d]
+            stats = self.update(obs, acts, r, t)
+            training_statistics.update(stats)
+
+        return training_statistics"""
+
         raise NotImplementedError
-        self.model.train()
+
+        
