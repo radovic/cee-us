@@ -454,6 +454,20 @@ class FrankaCubeMove(VecTask):
             self.reset_buf, self.progress_buf, self.actions, self.states, self.reward_settings, self.max_episode_length
         )
 
+    # new method
+    def compute_reward_sas(self, observations, actions, next_observations):
+        next_states = {
+            'target_size': self.states['target_size'], 
+            'cube_size': self.states['cube_size'],
+            'cube_pos': next_observations[..., 4:7],
+            'cube_pos_relative': next_observations[..., 4:7] - next_observations[..., 10:13],
+            'cube_to_target_pos': next_observations[..., 7:10],
+        }
+        rewards, _ = compute_franka_reward(
+            self.reset_buf, self.progress_buf, self.actions, next_states, self.reward_settings, self.max_episode_length
+        )
+        return rewards
+
     def compute_observations(self):
         self._refresh()
         obs = ["cube_quat", "cube_pos", "cube_to_target_pos", "eef_pos", "eef_quat"]
@@ -463,6 +477,7 @@ class FrankaCubeMove(VecTask):
 
         return self.obs_buf
     
+    # new method
     def compute_object_centric_observation(self, obs, agent_dim, object_dim, object_static_dim):
         # N x num_envs x obs_dim
         N = obs.shape[0]
@@ -475,7 +490,7 @@ class FrankaCubeMove(VecTask):
         }
         return state_dict
     
-    # TODO: Improve this function to be more general
+    # new method
     def get_object_dims(self):
         agent_dim = 10
         object_dyn_dim = 7
@@ -727,13 +742,14 @@ def compute_franka_reward(
 
     # distance from hand to the cube
     d = torch.norm(states["cube_pos_relative"], dim=-1)
-    d_lf = torch.norm(states["cube_pos"] - states["eef_lf_pos"], dim=-1)
-    d_rf = torch.norm(states["cube_pos"] - states["eef_rf_pos"], dim=-1)
-    dist_reward = 1 - torch.tanh(10.0 * (d + d_lf + d_rf) / 3)
+    # d_lf = torch.norm(states["cube_pos"] - states["eef_lf_pos"], dim=-1)
+    # d_rf = torch.norm(states["cube_pos"] - states["eef_rf_pos"], dim=-1)
+    dist_reward = 1 - torch.tanh(10.0 * d)
 
     # distance from the cube to the target
     offset = torch.zeros_like(states["cube_to_target_pos"])
-    offset[:, 2] = (cube_size + target_size) / 2
+    if offset.ndim > 2: offset.transpose(1, 2)[..., 2] = (cube_size + target_size) / 2
+    else: offset[..., 2] = (cube_size + target_size) / 2
     d_cube_target = torch.norm(states["cube_to_target_pos"] + offset, dim=-1)
     dist_target_reward = 1 - torch.tanh(10.0 * d_cube_target)
 
