@@ -27,7 +27,7 @@ training_iterations: 300
 
 rollout_params:
     render: false
-    task_horizon: 200
+    task_horizon: 300
 
 horizon: 30
 

@@ -30,7 +30,7 @@ class IsaacGym(IsaacSimGroundTruthSupportEnv, IsaacGymEnv):
 
     def cost_fn(self, observation, action, next_obs):
         # TODO: Check if this is implemented correctly
-        rew = self.ig_env.compute_reward(observation, action, next_obs)
+        rew = self.ig_env.compute_reward_sas(observation, action, next_obs)
         return -rew
 
     def targ_proc(self, observations, next_observations):

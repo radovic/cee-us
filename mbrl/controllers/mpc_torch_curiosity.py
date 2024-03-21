@@ -48,6 +48,15 @@ class TorchCuriosityMpcICem(TorchMpcICem):
         mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [p,e,h,obs_dim]
         torch.std(mean_next_obs, dim=ensemble_dim, out=self.stds_of_means_)
 
+        # for evaluation of epistemic uncertainties
+        per_obsdim_uncertainty = torch.mean(self.stds_of_means_, dim=(0, 1))  # [obs_dim]
+        for idx, unc in enumerate(per_obsdim_uncertainty):
+            self.logger.log(unc.item(), "dim_uncertainty/obs_{}".format(idx))
+        self.logger.log(torch.mean(per_obsdim_uncertainty[:4]).item(), "oc_uncertainty/cube_quaternion_uncertainty")
+        self.logger.log(torch.mean(per_obsdim_uncertainty[4:7]).item(), "oc_uncertainty/cube_position_uncertainty")
+        self.logger.log(torch.mean(per_obsdim_uncertainty[7:10]).item(), "oc_uncertainty/cube_to_target_uncertainty")
+        self.logger.log(torch.mean(per_obsdim_uncertainty[10:]).item(), "oc_uncertainty/agent_position_uncertainty")
+        
         self._epistemic_bonus_per_path = self.stds_of_means_.sum(dim=-1)  # [p,h]
 
     @torch.no_grad()

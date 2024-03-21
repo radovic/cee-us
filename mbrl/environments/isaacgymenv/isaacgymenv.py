@@ -1,4 +1,5 @@
 import copy
+import sys
 import isaacgym
 import torch
 import random
@@ -94,16 +95,17 @@ class IsaacGymEnv(utils.EzPickle):
         return self.ig_env.compute_reward()
 
     def reset(self):
-        return self.ig_env.reset()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        self.ig_env.reset_idx(torch.arange(self.num_envs, device=self.ig_env.device))
+        return self._get_obs()
 
     def _get_obs(self):
-        return self.ig_env.compute_observations()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        return self.ig_env.compute_observations()[0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
     
     def render(self, mode="human"):
         self.ig_env.render(mode=mode)
 
     def close(self):
-        self.ig_env.close()
+        sys.exit()
 
 
 if __name__ == "__main__":

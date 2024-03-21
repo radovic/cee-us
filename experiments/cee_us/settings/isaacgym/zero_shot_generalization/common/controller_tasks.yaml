@@ -3,13 +3,13 @@ __import__:
 
 env: "IsaacGymEnv"
 env_params:
-  task: "FrankaCubeStack"
-  num_envs: 5
+  task: "FrankaCubeMove"
+  num_envs: 1
   headless: False
   isaacgymenvs_path: "./mbrl/environments/isaacgymenv/custom_envs"
   show_cfg: True
 
-# Task choices: [FrankaCubeStack]
+# Task choices: [FrankaCubeMove]
 
 rollout_params:
   render: false
@@ -19,7 +19,7 @@ rollout_params:
   only_final_reward: false
   use_env_states: true
   logging: true
-  task_horizon: 250
+  task_horizon: 300
 
 controller: "mpc-icem-torch"
 controller_params:

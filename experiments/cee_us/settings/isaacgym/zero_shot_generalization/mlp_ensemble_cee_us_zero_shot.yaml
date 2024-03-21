@@ -1,0 +1,21 @@
+__import__:
+    - "experiments/defaults.yaml"
+    - "experiments/cee_us/settings/common/basic.yaml"
+    - "experiments/cee_us/settings/isaacgym/zero_shot_generalization/common/basic_mlp_ensemble_zero_shot.yaml"    
+    - "experiments/cee_us/settings/isaacgym/zero_shot_generalization/common/controller_tasks.yaml"
+
+env_params:
+  task: "FrankaCubeMove" 
+
+rollout_params:
+  task_horizon: 300
+
+forward_model_init: 
+    pretrainer: null
+    pickle_path: "results/cee_us/new_isaacgym/fixed_reset_cluster_mlp/checkpoints_300/forward_model" # The trained model path goes here: e.g. {RESULTS_DIR}/checkpoints_latest/forward_model
+
+number_of_rollouts: 100
+
+working_dir: "results/cee_us/zero_shot/isaacgym_franka_cube_move/mlp_ensemble_icem"
+
+device: "cuda:0"
