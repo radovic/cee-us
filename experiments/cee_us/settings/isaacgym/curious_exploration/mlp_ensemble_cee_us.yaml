@@ -22,7 +22,7 @@ post_rollout_hooks: [
 
 eval_buffers: []
 
-number_of_rollouts: 10
+number_of_rollouts: 1
 training_iterations: 400
 
 rollout_params:
@@ -38,7 +38,7 @@ controller_params:
     elites_size: 5
 
 checkpoints:
-    load: true
+    load: false
     save_every_n_iter: 25
 
 working_dir: "results/cee_us/new_isaacgym/fixed_reset_cluster_mlp"

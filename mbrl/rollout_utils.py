@@ -353,6 +353,7 @@ class RolloutManager:
         ]
         if info_dict and len(info_dict) > 0:
             fields += list(info_dict.keys())
+            fields = [f if f != 'success' else 'successes' for f in fields]
         if isinstance(env, GoalSpaceEnvironmentInterface):
             fields.append("successes")
 

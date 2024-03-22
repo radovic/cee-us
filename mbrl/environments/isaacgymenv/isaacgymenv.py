@@ -89,7 +89,8 @@ class IsaacGymEnv(utils.EzPickle):
     def step(self, action):
         action = torch.Tensor([action] * self.num_envs).to(self.ig_env.device) # TODO: TEMPORARY: Clone the action for all environments
         obs, rew, done, info = self.ig_env.step(action)
-        return (obs['obs'][0].cpu().detach().numpy(), rew[0].cpu().detach().numpy(), done[0].cpu().detach().numpy(), {}) # TODO: TEMPORARY: Only return the first observation
+        for k in info.keys(): info[k] = info[k].cpu().detach().numpy() if torch.is_tensor(info[k]) else info[k]
+        return (obs['obs'][0].cpu().detach().numpy(), rew[0].cpu().detach().numpy(), done[0].cpu().detach().numpy(), info) # TODO: TEMPORARY: Only return the first observation
 
     def compute_reward(self):
         return self.ig_env.compute_reward()

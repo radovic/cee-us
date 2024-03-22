@@ -4,6 +4,14 @@ __import__:
     - "experiments/cee_us/settings/isaacgym/zero_shot_generalization/common/basic_mlp_ensemble_zero_shot.yaml"    
     - "experiments/cee_us/settings/isaacgym/zero_shot_generalization/common/controller_tasks.yaml"
 
+post_rollout_hooks: [
+   ["experiments.cee_us.hooks.post_rollout_hooks.interaction_metrics_isaacgym:interaction_tracker_hook", 
+   {
+      "plot_trajs": false
+   }
+   ]
+] 
+
 env_params:
   task: "FrankaCubeMove" 
 

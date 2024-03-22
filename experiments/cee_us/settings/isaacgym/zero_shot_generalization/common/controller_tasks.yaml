@@ -23,7 +23,7 @@ rollout_params:
 
 controller: "mpc-icem-torch"
 controller_params:
-  horizon: 40
+  horizon: 300
   num_simulated_trajectories: 64
   factor_decrease_num: 1
   cost_along_trajectory: "sum"
@@ -48,7 +48,7 @@ controller_params:
   use_async_action: false
   logging: true
 
-horizon: 40
+horizon: 300
 
 initial_controller: "none"
 initial_controller_params: {}

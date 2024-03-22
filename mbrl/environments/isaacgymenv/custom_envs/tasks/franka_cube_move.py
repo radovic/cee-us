@@ -660,6 +660,11 @@ class FrankaCubeMove(VecTask):
 
         return u
 
+    def _compute_success(self):
+        success = torch.norm(self.obs_buf[:, 7:10], dim=-1) < self.target_size
+        self.extras['success'] = torch.atleast_1d(success)
+        return success
+
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
 
@@ -701,6 +706,7 @@ class FrankaCubeMove(VecTask):
 
         self.compute_observations()
         self.compute_reward(self.actions)
+        self._compute_success()
 
         # debug viz
         if self.viewer and self.debug_viz:
