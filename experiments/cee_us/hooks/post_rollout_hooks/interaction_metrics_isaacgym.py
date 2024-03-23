@@ -11,10 +11,11 @@ def interaction_tracker_hook(_locals, _globals, **kwargs):
     obs_state_dict = env.get_object_centric_obs(latest_rollouts["observations"])
     obs_state_dict_next = env.get_object_centric_obs(latest_rollouts["next_observations"])
 
-    metrics['success'] = np.clip(np.sum(latest_rollouts["successes"]), 0, 1)
-    metrics['final_success'] = np.clip(latest_rollouts["successes"][-1], 0, 1)
-    logger.log(metrics['success'], key='success')
-    logger.log(metrics['final_success'], key='final_success')
+    successes = latest_rollouts["successes"].reshape(len(latest_rollouts), -1)
+    rollout_successes = np.clip(np.sum(successes, axis=-1), 0, 1)
+    final_successes = np.clip(successes[:, -1], 0, 1)
+    for idx in range(len(rollout_successes)): logger.log(rollout_successes[idx], key='success')
+    for idx in range(len(final_successes)): logger.log(final_successes[idx], key='final_success')
 
     objects_delta = obs_state_dict_next['objects_dyn'] - obs_state_dict['objects_dyn']
 

@@ -16,13 +16,13 @@ env_params:
   task: "FrankaCubeMove" 
 
 rollout_params:
-  task_horizon: 300
+  task_horizon: 10
 
 forward_model_init: 
     pretrainer: null
     pickle_path: "results/cee_us/new_isaacgym/fixed_reset_cluster_mlp/checkpoints_300/forward_model" # The trained model path goes here: e.g. {RESULTS_DIR}/checkpoints_latest/forward_model
 
-number_of_rollouts: 100
+number_of_rollouts: 2
 
 working_dir: "results/cee_us/zero_shot/isaacgym_franka_cube_move/mlp_ensemble_icem"
 

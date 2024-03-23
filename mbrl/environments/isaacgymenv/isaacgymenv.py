@@ -106,7 +106,7 @@ class IsaacGymEnv(utils.EzPickle):
         self.ig_env.render(mode=mode)
 
     def close(self):
-        sys.exit()
+        pass
 
 
 if __name__ == "__main__":
