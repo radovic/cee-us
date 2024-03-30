@@ -58,7 +58,7 @@ class TorchCuriosityMpcICem(TorchMpcICem):
 
         self._model_epistemic_costs(rollout_buffer)
 
-        costs_path = -self._epistemic_bonus_per_path.unsqueeze(1).expand(-1, self._ensemble_size, -1)
+        costs_path = -self._epistemic_bonus_per_path.unsqueeze(1).expand(-1, self._ensemble_size, -1, -1)
         if self._w_extrinsic_reward:
             env_cost = cost_fn(
                 rollout_buffer.as_array("observations"),

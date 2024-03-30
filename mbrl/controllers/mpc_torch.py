@@ -45,7 +45,8 @@ class TorchMpcICem(MpcController):
                 raise Exception(f"Model {self.forward_model} not supported!")
 
         if self._ensemble_size:
-            self.forward_model.num_simulated_trajectories = self.num_sim_traj
+            # needed for predicting multiple trajectories in parallel
+            self.forward_model.num_simulated_trajectories = self.num_envs * self.num_sim_traj
             self.forward_model.horizon = self.horizon
             if hasattr(self.forward_model, "preallocate_memory"):
                 self.forward_model.preallocate_memory()
@@ -158,7 +159,10 @@ class TorchMpcICem(MpcController):
                 horizon=self.horizon,
             )[0]
             for k in rb.buffer.keys():
-                rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
+                if self._ensemble_size:
+                    rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self._ensemble_size, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
+                else:
+                    rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
             return rb
 
     @torch.no_grad()
@@ -220,11 +224,20 @@ class TorchMpcICem(MpcController):
             # Important improvement
             # self.mean has shape h,d: we need to swap d and h because temporal correlations are in last axis)
             # noinspection PyUnresolvedReferences
-
+            
+            # probably inefficient
+            samples = torch.empty(self.num_envs, num_traj, self.mean_.shape[1], self.mean_.shape[2], device=torch_helpers.device)
+            for i in range(self.num_envs):
+                self.samples_[i] = colored_noise.torch_powerlaw_psd_gaussian(
+                    self.noise_beta,
+                    size=(num_traj, self.mean_.shape[2], self.mean_.shape[1]),
+                ).transpose(2, 1)
+            '''
             samples = colored_noise.torch_powerlaw_psd_gaussian(
                 self.noise_beta,
                 size=(self.num_envs, num_traj, self.mean_.shape[2], self.mean_.shape[1]),
             ).transpose(3, 2)
+            '''
         else:
             self.samples_.normal_()
             samples = self.samples_[:, :num_traj]  # view on self.samples
