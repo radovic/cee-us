@@ -226,18 +226,10 @@ class TorchMpcICem(MpcController):
             # noinspection PyUnresolvedReferences
             
             # probably inefficient
-            samples = torch.empty(self.num_envs, num_traj, self.mean_.shape[1], self.mean_.shape[2], device=torch_helpers.device)
-            for i in range(self.num_envs):
-                self.samples_[i] = colored_noise.torch_powerlaw_psd_gaussian(
-                    self.noise_beta,
-                    size=(num_traj, self.mean_.shape[2], self.mean_.shape[1]),
-                ).transpose(2, 1)
-            '''
             samples = colored_noise.torch_powerlaw_psd_gaussian(
                 self.noise_beta,
                 size=(self.num_envs, num_traj, self.mean_.shape[2], self.mean_.shape[1]),
             ).transpose(3, 2)
-            '''
         else:
             self.samples_.normal_()
             samples = self.samples_[:, :num_traj]  # view on self.samples
@@ -274,7 +266,7 @@ class TorchMpcICem(MpcController):
         actions = elites.as_array("actions").to(torch_helpers.device)  # shape: [p,h,d]
         if self._ensemble_size:
             # taking action seq of first model (they are all the same anyway)
-            reused_actions = actions[:, :, 0, 1:]
+            reused_actions = actions[:, 0, :, 1:]
         else:
             reused_actions = actions[:, :, 1:]  # shape: [p,h-1,d]
         num_elites = int(reused_actions.shape[1] * fraction_to_be_used)
