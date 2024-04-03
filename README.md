@@ -2,6 +2,7 @@ plan_horizon = 30
 task_horizon = 100
 num_traj = 128
 num_rollouts = 20
+num_elites = 10
 
 | Model    | n_envs=1 | n_envs=3 |
 | -------- |  ------- | ------- |
