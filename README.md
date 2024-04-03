@@ -1,3 +1,15 @@
+plan_horizon = 30
+task_horizon = 100
+num_traj = 128
+num_rollouts = 20
+
+| Model    | n_envs=1 | n_envs=3 |
+| -------- |  ------- | ------- |
+| mlp_rnd  | x        |x        |
+| mlp_ens  | x        |x        |
+| gnns     | x        |x        |
+| gnn_rnd  | x        |x        |
+
 # Curious Exploration via Structured World Models Yields Zero-Shot Object Manipulation
 
 <p align="center">
