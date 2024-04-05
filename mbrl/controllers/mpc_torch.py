@@ -160,7 +160,7 @@ class TorchMpcICem(MpcController):
             )[0]
             for k in rb.buffer.keys():
                 if self._ensemble_size:
-                    rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self._ensemble_size, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
+                    rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self._ensemble_size, self.horizon, rb.buffer[k].shape[-1])
                 else:
                     rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
             return rb
@@ -226,7 +226,7 @@ class TorchMpcICem(MpcController):
             # noinspection PyUnresolvedReferences
             
             # probably inefficient
-            samples = colored_noise.torch_powerlaw_psd_gaussian(
+            samples = colored_noise.torch_powerlaw_psd_gaussian( # check the horizon length
                 self.noise_beta,
                 size=(self.num_envs, num_traj, self.mean_.shape[2], self.mean_.shape[1]),
             ).transpose(3, 2)
@@ -266,7 +266,7 @@ class TorchMpcICem(MpcController):
         actions = elites.as_array("actions").to(torch_helpers.device)  # shape: [p,h,d]
         if self._ensemble_size:
             # taking action seq of first model (they are all the same anyway)
-            reused_actions = actions[:, 0, :, 1:]
+            reused_actions = actions[:, :, 0, 1:]
         else:
             reused_actions = actions[:, :, 1:]  # shape: [p,h-1,d]
         num_elites = int(reused_actions.shape[1] * fraction_to_be_used)
@@ -334,9 +334,9 @@ class TorchMpcICem(MpcController):
                 self.trajectory_cost_fn(
                     self.cost_fn, simulated_paths, out=self.costs_per_model_
                 )  # shape [num_sim_traj, num_models]
-                torch.mean(self.costs_per_model_, -1, out=self.costs_)
+                torch.mean(self.costs_per_model_, 2, out=self.costs_) # ensemble in the third dimension
                 # could be used to weigh the costs
-                torch.std(self.costs_per_model_, -1, out=self.costs_std_)
+                torch.std(self.costs_per_model_, 2, out=self.costs_std_)
 
                 if self.use_ensemble_cost_std:
                     torch.add(self.costs_, self.costs_std_, out=self.costs_)
@@ -353,8 +353,8 @@ class TorchMpcICem(MpcController):
                 def display_cost(cost):
                     return cost / self.horizon if self.cost_along_trajectory == "sum" else cost
 
-                if simulated_paths["actions"][best_traj_idx].ndim == 4:
-                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0][0][0]
+                if simulated_paths["actions"][best_traj_idx].ndim == 5:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), :,  best_traj_idx, :][0][0][0]
                 else:
                     best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0][0]
                 print(
@@ -398,12 +398,12 @@ class TorchMpcICem(MpcController):
                 # we take the second action, as the first one was already
                 # executed
                 if self._ensemble_size:
-                    executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][:, 0, 1]
+                    executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :][:, 1]
                 else:
                     executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][:, 1]
             else:
                 if self._ensemble_size:
-                    executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][:, 0, 0]
+                    executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :][:, 0]
                 else:
                     executed_action = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][:, 0]
 
@@ -469,7 +469,10 @@ class TorchMpcICem(MpcController):
         else:
             elite_idxs = torch.argsort(costs)[:, : self.num_elites]
 
-        self.elite_samples = SimpleRolloutBuffer(rollouts=sampled_trajectories[np.arange(elite_idxs.shape[0])[:, None], elite_idxs])
+        if self._ensemble_size:
+            self.elite_samples = SimpleRolloutBuffer(rollouts=sampled_trajectories[torch.arange(elite_idxs.shape[0])[:, None], elite_idxs, :])
+        else:
+            self.elite_samples = SimpleRolloutBuffer(rollouts=sampled_trajectories[np.arange(elite_idxs.shape[0])[:, None], elite_idxs])
 
         # Update mean, std
         elite_sequences = self.elite_samples.as_array("actions").to(torch_helpers.device)
