@@ -101,10 +101,10 @@ class FrankaCubeMove(VecTask):
             "Invalid control type specified. Must be one of: {osc, joint_tor}"
 
         # dimensions
-        # obs include: cube_pose (7) + target_pos (3) + eef_pose (7) + q_gripper (2)
-        self.cfg["env"]["numObservations"] = 19 if self.control_type == "osc" else 26
-        # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
-        self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
+        # obs include: cube_pose (7) + target_pos (3) + eef_pose (3) + q_gripper (2)
+        self.cfg["env"]["numObservations"] = 15 if self.control_type == "osc" else 22
+        # actions include: delta EEF if OSC (3) or joint torques (7) + bool gripper (1)
+        self.cfg["env"]["numActions"] = 4 if self.control_type == "osc" else 8
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -453,11 +453,10 @@ class FrankaCubeMove(VecTask):
         self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
             self.reset_buf, self.progress_buf, self.actions, self.states, self.reward_settings, self.max_episode_length
         )
-
-    # new method
+    
     def compute_reward_sas(self, observations, actions, next_observations):
         next_states = {
-            'target_size': self.states['target_size'], 
+            'target_size': self.states['target_size'],
             'cube_size': self.states['cube_size'],
             'cube_pos': next_observations[..., 4:7],
             'cube_pos_relative': next_observations[..., 4:7] - next_observations[..., 10:13],
@@ -470,29 +469,29 @@ class FrankaCubeMove(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cube_quat", "cube_pos", "cube_to_target_pos", "eef_pos", "eef_quat"]
+        obs = ["cube_quat", "cube_pos", "cube_to_target_pos", "eef_pos"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
         maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
 
         return self.obs_buf
     
-    # new method
     def compute_object_centric_observation(self, obs, agent_dim, object_dim, object_static_dim):
-        # N x num_envs x obs_dim
-        N = obs.shape[0]
+        if obs.ndim == 3:
+            obs = obs.reshape(obs.shape[0], -1)
+        elif obs.ndim == 1:
+            obs = np.expand_dims(obs, axis=0)
 
-        # TODO: This is a hacky way to get the object-centric observation. We should refactor this to be more general
         state_dict = {
-            "agent": obs[..., 10:],
-            "objects_dyn": np.concatenate((obs[..., 4:7], obs[..., :4]), axis=-1).reshape(N, -1, 7),
-            "objects_static": (obs[..., 4:7] + obs[..., 7:10]),
+            "agent": obs[:, 10:],
+            "objects_dyn": np.concatenate((obs[:, 4:7], obs[:, :4]), axis=-1).reshape(1, -1, 7),
+            "objects_static": (obs[:, 4:7] + obs[:, 7:10]).reshape(1, -1, 3),
         }
         return state_dict
     
-    # new method
+    # TODO: Improve this function to be more general
     def get_object_dims(self):
-        agent_dim = 10
+        agent_dim = 6
         object_dyn_dim = 7
         object_stat_dim = 3
         nObj = 1
@@ -578,8 +577,8 @@ class FrankaCubeMove(VecTask):
         centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
 
         # Set z value, which is fixed height
-        sampled_cube_state[:, 2] = self._table_surface_pos[2] + cube_heights.squeeze(-1)[env_ids] / 2
-        sampled_target_state[:, 2] = self._table_surface_pos[2] + target_heights.squeeze(-1)[env_ids] / 2
+        sampled_cube_state[:, 2] = self._table_surface_pos[2] + torch.atleast_1d(cube_heights.squeeze(-1))[env_ids] / 2
+        sampled_target_state[:, 2] = self._table_surface_pos[2] + torch.atleast_1d(target_heights.squeeze(-1))[env_ids] / 2
 
         # Initialize rotation, which is no rotation (quat w = 1)
         sampled_cube_state[:, 6] = 1.0
@@ -661,6 +660,11 @@ class FrankaCubeMove(VecTask):
 
         return u
 
+    def _compute_success(self):
+        success = torch.norm(self.obs_buf[:, 7:10], dim=-1) < self.target_size
+        self.extras['success'] = torch.atleast_1d(success)
+        return success
+
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
 
@@ -671,6 +675,10 @@ class FrankaCubeMove(VecTask):
         # print(self.cmd_limit, self.action_scale)
 
         # Control arm (scale value first)
+        if self.control_type == "osc":
+            orientation_offset = torch.zeros_like(u_arm)
+            u_arm = torch.cat([u_arm, orientation_offset], dim=-1)
+            
         u_arm = u_arm * self.cmd_limit / self.action_scale
         if self.control_type == "osc":
             u_arm = self._compute_osc_torques(dpose=u_arm)
@@ -698,6 +706,7 @@ class FrankaCubeMove(VecTask):
 
         self.compute_observations()
         self.compute_reward(self.actions)
+        self._compute_success()
 
         # debug viz
         if self.viewer and self.debug_viz:
@@ -750,8 +759,12 @@ def compute_franka_reward(
     offset = torch.zeros_like(states["cube_to_target_pos"])
     if offset.ndim > 2: offset.transpose(1, 2)[..., 2] = (cube_size + target_size) / 2
     else: offset[..., 2] = (cube_size + target_size) / 2
+    # offset[..., 2] = (cube_size + target_size) / 2
     d_cube_target = torch.norm(states["cube_to_target_pos"] + offset, dim=-1)
     dist_target_reward = 1 - torch.tanh(10.0 * d_cube_target)
+
+    reward_settings['r_dist_target_scale'] = 1.0
+    reward_settings['r_dist_touch_scale'] = 0.1
 
     rewards = reward_settings['r_dist_target_scale'] * dist_target_reward +\
         dist_reward * reward_settings['r_dist_touch_scale']

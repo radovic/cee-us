@@ -22,7 +22,7 @@ post_rollout_hooks: [
 
 eval_buffers: []
 
-number_of_rollouts: 1 # 20
+number_of_rollouts: 20 # 20
 training_iterations: 300
 
 rollout_params:
@@ -33,9 +33,9 @@ horizon: 30
 
 controller_params:
   horizon: 30
-  num_simulated_trajectories: 64 # 128
+  num_simulated_trajectories: 128 # 128
   action_sampler_params: 
-    elites_size: 5 # 10
+    elites_size: 10 # 10
 
 checkpoints:
     save_every_n_iter: 25
