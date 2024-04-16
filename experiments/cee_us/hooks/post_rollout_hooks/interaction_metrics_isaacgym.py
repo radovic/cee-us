@@ -36,8 +36,8 @@ def cube_off_table_tracker_hook(_locals, _globals, **kwargs):
     logger = _locals["logger"]
     obs = _locals['next_ob']
     env = _locals["env"]
-    object_static = env.get_object_centric_obs(obs)['objects_static'][0,0]
-    fell_off = object_static[2] < 0.5 # assume that the gripper may potentially reach lower than the table with cube in hand.
+    cube_position = env.get_object_centric_obs(obs)['objects_dyn'][0,0, :3]
+    fell_off = cube_position[2] < 0.5 # assume that the gripper may potentially reach lower than the table with cube in hand.
     logger.log(fell_off, key=env.env_body_names[0]+'_fell_off_table')
 
 
