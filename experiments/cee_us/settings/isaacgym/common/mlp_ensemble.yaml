@@ -1,7 +1,7 @@
 forward_model: ParallelNNDeterministicEnsemble
 forward_model_params:
     model_params:
-        n: 2
+        n: 5
         num_layers: 4
         hidden_dim: 1024
         act_fn: "silu"
