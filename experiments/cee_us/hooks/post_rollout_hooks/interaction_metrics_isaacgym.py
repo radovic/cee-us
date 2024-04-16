@@ -11,6 +11,12 @@ def interaction_tracker_hook(_locals, _globals, **kwargs):
     obs_state_dict = env.get_object_centric_obs(latest_rollouts["observations"])
     obs_state_dict_next = env.get_object_centric_obs(latest_rollouts["next_observations"])
 
+    # successes = latest_rollouts["successes"].reshape(len(latest_rollouts), -1)
+    # rollout_successes = np.clip(np.sum(successes, axis=-1), 0, 1)
+    # final_successes = np.clip(successes[:, -1], 0, 1)
+    # for idx in range(len(rollout_successes)): logger.log(rollout_successes[idx], key='success')
+    # for idx in range(len(final_successes)): logger.log(final_successes[idx], key='final_success')
+    
     objects_delta = obs_state_dict_next['objects_dyn'] - obs_state_dict['objects_dyn']
 
     moved_objects_indices = np.any(np.abs(objects_delta[...,:3])>1e-3, axis=-1) # num_obj x timesteps

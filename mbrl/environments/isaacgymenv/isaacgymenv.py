@@ -97,16 +97,17 @@ class IsaacGymEnv(utils.EzPickle):
         return self.ig_env.compute_reward()
 
     def reset(self):
-        return self.ig_env.reset()['obs'].cpu().detach().numpy()
+        self.ig_env.reset_idx(torch.arange(self.num_envs, device=self.ig_env.device))
+        return self._get_obs()
 
     def _get_obs(self):
-        return self.ig_env.compute_observations()['obs'].cpu().detach().numpy()
+        return self.ig_env.compute_observations().cpu().detach().numpy()
     
     def render(self, mode="human"):
         self.ig_env.render(mode=mode)
 
     def close(self):
-        self.ig_env.close()
+        pass
 
 
 if __name__ == "__main__":
