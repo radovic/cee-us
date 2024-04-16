@@ -226,7 +226,7 @@ class FrankaCubeMove(VecTask):
         table_stand_asset = self.gym.create_box(self.sim, *[0.2, 0.2, table_stand_height], table_opts)
 
         self.cube_size = 0.050
-        self.target_size = 0.020
+        self.target_size = 0.070
 
         # Create cube asset
         cube_opts = gymapi.AssetOptions()
@@ -376,7 +376,7 @@ class FrankaCubeMove(VecTask):
 
         # Setup init state buffer
         self._init_cube_state = torch.zeros(self.num_envs, 13, device=self.device)
-        self._init_cube_state = torch.zeros(self.num_envs, 13, device=self.device)
+        self._init_cube2_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_target_state = torch.zeros(self.num_envs, 13, device=self.device)
 
         # Setup data
@@ -393,9 +393,9 @@ class FrankaCubeMove(VecTask):
             "rightfinger_tip": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_rightfinger_tip"),
             "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_grip_site"),
             # Cubes
-            "cube_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube_id, "cube"),
-            "cube2_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube2_id, "cube2"),
-            "target_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._target_id, "target"),
+            "cube_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube_id, "box"),
+            "cube2_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube2_id, "box"),
+            "target_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._target_id, "sphere"),
         }
 
         # Get total DOFs
@@ -440,8 +440,9 @@ class FrankaCubeMove(VecTask):
         self._gripper_control = self._pos_control[:, 7:9]
 
         # Initialize indices
-        # TODO: change 5 -> 6 since we added anoither cube?
-        self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
+        # global indices is a tensor of shape [num_envs, objs per env].
+        num_objs_in_sim = 6
+        self._global_indices = torch.arange(self.num_envs * num_objs_in_sim, dtype=torch.int32,
                                            device=self.device).view(self.num_envs, -1)
 
     def _update_states(self):
@@ -519,7 +520,7 @@ class FrankaCubeMove(VecTask):
     # TODO: Improve this function to be more general
     def get_object_dims(self):
         agent_dim = 6
-        object_dyn_dim = 7
+        object_dyn_dim = 14
         object_stat_dim = 3
         nObj = 1
         return agent_dim, object_dyn_dim, object_stat_dim, nObj
@@ -532,6 +533,7 @@ class FrankaCubeMove(VecTask):
 
         # Write these new init states to the sim states
         self._cube_state[env_ids] = self._init_cube_state[env_ids]
+        self._cube2_state[env_ids] = self._init_cube2_state[env_ids]
         self._target_state[env_ids] = self._init_target_state[env_ids]
 
         # Reset agent
@@ -568,8 +570,10 @@ class FrankaCubeMove(VecTask):
                                               gymtorch.unwrap_tensor(multi_env_ids_int32),
                                               len(multi_env_ids_int32))
 
-        # Update cube states
-        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -2:].flatten()
+        
+        # Update all actor states.
+        # In our sim, the three last indices are the cube, cube2 and target. update them.
+        multi_env_ids_cubes_int32 = self._global_indices[env_ids, -3:].flatten()
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim, gymtorch.unwrap_tensor(self._root_state),
             gymtorch.unwrap_tensor(multi_env_ids_cubes_int32), len(multi_env_ids_cubes_int32))
@@ -589,26 +593,31 @@ class FrankaCubeMove(VecTask):
         # Initialize buffer to hold sampled values
         num_resets = len(env_ids)
         sampled_cube_state = torch.zeros(num_resets, 13, device=self.device)
+        sampled_cube2_state = torch.zeros(num_resets, 13, device=self.device)
         sampled_target_state = torch.zeros(num_resets, 13, device=self.device)
 
         cube_heights = self.states["cube_size"]
         target_heights = self.states["target_size"]
 
         # Minimum cube distance for guarenteed collision-free sampling is the sum of each cube's effective radius
-        min_dists = (self.states["cube_size"] + self.states["target_size"])[env_ids] * np.sqrt(2) / 2.0
+        min_dists_target = (self.states["cube_size"] + self.states["target_size"])[env_ids] * np.sqrt(2) / 2.0
+        min_dists_cubes = (self.states["cube_size"] + self.states["cube_size"])[env_ids] * np.sqrt(2) / 2.0
+
 
         # We scale the min dist by 2 so that the cubes aren't too close together
-        min_dists = min_dists * 2.0
+        min_dists_target = min_dists_target * 2.0
 
         # Sampling is "centered" around middle of table
         centered_cube_xy_state = torch.tensor(self._table_surface_pos[:2], device=self.device, dtype=torch.float32)
 
         # Set z value, which is fixed height
         sampled_cube_state[:, 2] = self._table_surface_pos[2] + torch.atleast_1d(cube_heights.squeeze(-1))[env_ids] / 2
+        sampled_cube2_state[:, 2] = self._table_surface_pos[2] + torch.atleast_1d(cube_heights.squeeze(-1))[env_ids] / 2
         sampled_target_state[:, 2] = self._table_surface_pos[2] + torch.atleast_1d(target_heights.squeeze(-1))[env_ids] / 2
 
         # Initialize rotation, which is no rotation (quat w = 1)
         sampled_cube_state[:, 6] = 1.0
+        sampled_cube2_state[:, 6] = 1.0
         sampled_target_state[:, 6] = 1.0
 
         # first sample the cubes position. Uniform distr. [-1, 1] \times [-1, 1] around centered_cube_xy_state
@@ -617,7 +626,7 @@ class FrankaCubeMove(VecTask):
                                                     torch.rand(num_resets, 2, device=self.device) - 0.5)
         
         # collision free sampling of the target. 
-        great_success = False
+        success = False
 
         # Indexes corresponding to envs we're still actively sampling for
         active_idx = torch.arange(num_resets, device=self.device)
@@ -629,32 +638,41 @@ class FrankaCubeMove(VecTask):
                                                     2.0 * self.start_position_noise * (
                                                             torch.rand_like(sampled_cube_state[active_idx, :2]) - 0.5)
             
+            sampled_cube2_state[active_idx, :2] = centered_cube_xy_state + \
+                                                    2.0 * self.start_position_noise * (
+                                                            torch.rand_like(sampled_cube_state[active_idx, :2]) - 0.5)
             # Check if sampled values are valid
-            cube_dist = torch.linalg.norm(sampled_cube_state[:, :2] - sampled_target_state[:, :2], dim=-1)
-            active_idx = torch.nonzero(cube_dist < min_dists, as_tuple=True)[0]
+            cube_to_target_dist = torch.linalg.norm(sampled_cube_state[:, :2] - sampled_target_state[:, :2], dim=-1)
+            cube_to_cube2_dist = torch.linalg.norm(sampled_cube_state[:, :2] - sampled_cube2_state[:, :2], dim=-1)
+            active_idx = torch.nonzero((cube_to_cube2_dist < min_dists_cubes) | (cube_to_target_dist < min_dists_target), as_tuple=True)[0]
             num_active_idx = len(active_idx)
 
-            # If active idx is empty, then all sampling is valid :D
+            # If active idx is empty, then all sampling is valid
             if num_active_idx == 0:
-                great_success = True
+                success = True
                 break
         
         # Make sure we succeeded at sampling
-        assert great_success, "Sampling cube locations was unsuccessful! ):"
+        assert success, "Sampling cube locations was unsuccessful!"
     
         # Sample rotation value for cube
         if self.start_rotation_noise > 0:
             aa_rot_cube = torch.zeros(num_resets, 3, device=self.device)
             aa_rot_cube[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
+
+            aa_rot_cube2 = torch.zeros(num_resets, 3, device=self.device)
+            aa_rot_cube2[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
             
             aa_rot_target = torch.zeros(num_resets, 3, device=self.device)
             aa_rot_target[:, 2] = 2.0 * self.start_rotation_noise * (torch.rand(num_resets, device=self.device) - 0.5)
 
             sampled_cube_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot_cube), sampled_cube_state[:, 3:7])
+            sampled_cube2_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot_cube2), sampled_cube2_state[:, 3:7])
             sampled_target_state[:, 3:7] = quat_mul(axisangle2quat(aa_rot_target), sampled_target_state[:, 3:7])
 
         # Lastly, set these sampled values as the new init state
         self._init_cube_state[env_ids, :] = sampled_cube_state
+        self._init_cube2_state[env_ids, :] = sampled_cube2_state
         self._init_target_state[env_ids, :] = sampled_target_state
 
 
@@ -688,7 +706,7 @@ class FrankaCubeMove(VecTask):
         return u
 
     def _compute_success(self):
-        success = torch.norm(self.obs_buf[:, 7:10], dim=-1) < self.target_size
+        success = torch.norm(self.obs_buf[:, 14:17], dim=-1) < self.target_size
         self.extras['success'] = torch.atleast_1d(success)
         return success
 
@@ -737,6 +755,7 @@ class FrankaCubeMove(VecTask):
 
         # debug viz
         if self.viewer and self.debug_viz:
+            raise NotImplementedError
             self.gym.clear_lines(self.viewer)
             self.gym.refresh_rigid_body_state_tensor(self.sim)
 
