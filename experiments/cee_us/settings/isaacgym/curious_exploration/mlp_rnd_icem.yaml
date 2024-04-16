@@ -20,6 +20,8 @@ post_rollout_hooks: [
    ["experiments.cee_us.hooks.post_rollout_hooks.train_rnd_module:train_rnd_module_hook"]
 ] 
 
+
+
 eval_buffers: []
 
 number_of_rollouts: 10
@@ -28,6 +30,9 @@ training_iterations: 300
 rollout_params:
     render: false
     task_horizon: 300
+    post_env_step_hooks: [
+    ["experiments.cee_us.hooks.post_rollout_hooks.interaction_metrics_isaacgym:cube_off_table_tracker_hook"]
+    ]
 
 horizon: 30
 

@@ -28,8 +28,17 @@ def interaction_tracker_hook(_locals, _globals, **kwargs):
         metrics[obj_name + '_rel_time'] = rel_time
         logger.log(rel_time, key=obj_name + '_rel_time')
 
-
-
+def cube_off_table_tracker_hook(_locals, _globals, **kwargs):
+    """
+        Only applicable to franka_cube_move.py environment.
+    """
+    
+    logger = _locals["logger"]
+    obs = _locals['next_ob']
+    env = _locals["env"]
+    object_static = env.get_object_centric_obs(obs)['objects_static'][0,0]
+    fell_off = object_static[2] < 0.5 # assume that the gripper may potentially reach lower than the table with cube in hand.
+    logger.log(fell_off, key=env.env_body_names[0]+'_fell_off_table')
 
 
 
