@@ -409,9 +409,9 @@ class TorchMpcICem(MpcController):
 
         else:
             if self.use_async_action:
-                executed_action = self.mean_[1]
+                executed_action = self.mean_[:, 1]
             else:
-                executed_action = self.mean_[0]
+                executed_action = self.mean_[:, 0]
 
         if self.use_async_action:
             self.last_action = executed_action
@@ -423,11 +423,11 @@ class TorchMpcICem(MpcController):
 
         ### Shift initialization ###
         # Shift mean time-wise
-        self.mean_[:-1] = self.mean_[1:].clone()
+        self.mean_[:, :-1] = self.mean_[:, 1:].clone()
 
         # compute new action (default is to preserve the last one)
-        last_predicted_ob = simulated_paths['observations'][torch.arange(self.num_envs), best_traj_idx, :, :][-1]
-        self.mean_[-1] = self.compute_new_mean(obs=last_predicted_ob)
+        last_predicted_ob = simulated_paths['observations'][torch.arange(self.num_envs), best_traj_idx, :, :][:, -1]
+        self.mean_[:, -1] = self.compute_new_mean(obs=last_predicted_ob)
         ############################
 
         ### initialization of std dev ###
@@ -454,7 +454,7 @@ class TorchMpcICem(MpcController):
 
     @torch.no_grad()
     def compute_new_mean(self, obs):
-        return self.mean_[-1]
+        return self.mean_[:, -1]
 
     @torch.no_grad()
     def update_distributions(self, sampled_trajectories: SimpleRolloutBuffer, costs):

@@ -32,7 +32,7 @@ import os
 
 from isaacgym import gymtorch
 from isaacgym import gymapi
-from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp  
+from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_conjugate
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
 import torch
@@ -676,10 +676,21 @@ class FrankaCubeMove(VecTask):
 
         # Control arm (scale value first)
         if self.control_type == "osc":
+            '''
+            # TEST: Trying to fix orientation
+            current = self.states["eef_quat"]
+            cc = quat_conjugate(current)
+            desired = torch.ones_like(current)
+            desired[:, [2, 3]] = 0
+            desired /= torch.norm(desired)
+            q_r = quat_mul(desired, cc)
+            orientation_offset = q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1) * 100
+            '''
             orientation_offset = torch.zeros_like(u_arm)
             u_arm = torch.cat([u_arm, orientation_offset], dim=-1)
             
         u_arm = u_arm * self.cmd_limit / self.action_scale
+
         if self.control_type == "osc":
             u_arm = self._compute_osc_torques(dpose=u_arm)
         self._arm_control[:, :] = u_arm

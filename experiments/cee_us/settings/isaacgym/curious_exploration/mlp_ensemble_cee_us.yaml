@@ -23,7 +23,7 @@ post_rollout_hooks: [
 eval_buffers: []
 
 number_of_rollouts: 20 # 20
-training_iterations: 300
+training_iterations: 305
 
 rollout_params:
     render: false
@@ -33,6 +33,7 @@ horizon: 30
 
 controller_params:
   horizon: 30
+  cost_along_trajectory: "best"
   num_simulated_trajectories: 128 # 128
   action_sampler_params: 
     elites_size: 10 # 10
