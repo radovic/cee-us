@@ -101,8 +101,8 @@ class FrankaCubeMove(VecTask):
             "Invalid control type specified. Must be one of: {osc, joint_tor}"
 
         # dimensions
-        # obs include: cube_pose (7) + target_pos (3) + eef_pose (3) + q_gripper (2)
-        self.cfg["env"]["numObservations"] = 15 if self.control_type == "osc" else 22
+        # obs include: cube_pose (7) + cube2 pose (7) + target_pos (3) + eef_pose (3) + q_gripper (2)
+        self.cfg["env"]["numObservations"] = 22 if self.control_type == "osc" else 29
         # actions include: delta EEF if OSC (3) or joint torques (7) + bool gripper (1)
         self.cfg["env"]["numActions"] = 4 if self.control_type == "osc" else 8
 
@@ -111,11 +111,16 @@ class FrankaCubeMove(VecTask):
         self.handles = {}                       # will be dict mapping names to relevant sim handles
         self.num_dofs = None                    # Total number of DOFs per env
         self.actions = None                     # Current actions to be deployed
+        
+        # Initial Cube values
         self._init_cube_state = None           # Initial state of cube for the current env
+        self._init_cube2_state = None           
         self._init_target_state = None           # Initial state of target for the current env
         self._cube_state = None                # Current state of cube for the current env
+        self._cube2_state = None
         self._target_state = None                # Current state of target for the current env
-        self._cube_id = None                   # Actor ID corresponding to cube for a given env
+        self._cube_id = None
+        self._cube2_id = None                   
         self._target_id = None                   # Actor ID corresponding to target for a given env
 
         # Tensor placeholders
@@ -221,12 +226,17 @@ class FrankaCubeMove(VecTask):
         table_stand_asset = self.gym.create_box(self.sim, *[0.2, 0.2, table_stand_height], table_opts)
 
         self.cube_size = 0.050
-        self.target_size = 0.070
+        self.target_size = 0.020
 
         # Create cube asset
         cube_opts = gymapi.AssetOptions()
         cube_asset = self.gym.create_box(self.sim, *([self.cube_size] * 3), cube_opts)
         cube_color = gymapi.Vec3(0.6, 0.1, 0.0)
+
+        # Create cube2 asset
+        cube2_opts = gymapi.AssetOptions()
+        cube2_asset = self.gym.create_box(self.sim, *([self.cube_size] * 3), cube2_opts)
+        cube2_color = gymapi.Vec3(0.0, 0.0, 0.6)
 
         # Create target asset
         target_opts = gymapi.AssetOptions()
@@ -287,6 +297,11 @@ class FrankaCubeMove(VecTask):
         cube_start_pose = gymapi.Transform()
         cube_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
         cube_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+        cube2_start_pose = gymapi.Transform()
+        cube2_start_pose.p = gymapi.Vec3(-1.0, 0.0, 0.0)
+        cube2_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
         target_start_pose = gymapi.Transform()
         target_start_pose.p = gymapi.Vec3(1.0, 0.0, 0.0)
         target_start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
@@ -294,8 +309,8 @@ class FrankaCubeMove(VecTask):
         # compute aggregate size
         num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         num_franka_shapes = self.gym.get_asset_rigid_shape_count(franka_asset)
-        max_agg_bodies = num_franka_bodies + 4     # 1 for table, table stand, cube, target
-        max_agg_shapes = num_franka_shapes + 4     # 1 for table, table stand, cube, target
+        max_agg_bodies = num_franka_bodies + 5     # for table, table stand, 2 cubes, target
+        max_agg_shapes = num_franka_shapes + 5     # for table, table stand, 2 cubes, target
 
         self.frankas = []
         self.envs = []
@@ -337,15 +352,19 @@ class FrankaCubeMove(VecTask):
 
             # Create cubes
             self._cube_id = self.gym.create_actor(env_ptr, cube_asset, cube_start_pose, "cube", i, 8, 0)
+            self._cube2_id = self.gym.create_actor(env_ptr, cube2_asset, cube2_start_pose, "cube2", i, 16, 0)
+            
             self._target_id = self.gym.create_actor(env_ptr, 
                                                     target_asset, 
                                                     target_start_pose, 
                                                     "target", 
                                                     i, 
-                                                    9, # binary: 1001, dont collide with franka arm and cube
+                                                    25, # binary: 11001, dont collide with franka arm and cube and second cube
                                                     0)
+            
             # Set colors
             self.gym.set_rigid_body_color(env_ptr, self._cube_id, 0, gymapi.MESH_VISUAL, cube_color)
+            self.gym.set_rigid_body_color(env_ptr, self._cube2_id, 0, gymapi.MESH_VISUAL, cube2_color)
             self.gym.set_rigid_body_color(env_ptr, self._target_id, 0, gymapi.MESH_VISUAL, target_color)
 
             if self.aggregate_mode > 0:
@@ -356,6 +375,7 @@ class FrankaCubeMove(VecTask):
             self.frankas.append(franka_actor)
 
         # Setup init state buffer
+        self._init_cube_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_cube_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_target_state = torch.zeros(self.num_envs, 13, device=self.device)
 
@@ -374,6 +394,7 @@ class FrankaCubeMove(VecTask):
             "grip_site": self.gym.find_actor_rigid_body_handle(env_ptr, franka_handle, "panda_grip_site"),
             # Cubes
             "cube_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube_id, "cube"),
+            "cube2_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._cube2_id, "cube2"),
             "target_body_handle": self.gym.find_actor_rigid_body_handle(self.envs[0], self._target_id, "target"),
         }
 
@@ -400,11 +421,13 @@ class FrankaCubeMove(VecTask):
         mm = gymtorch.wrap_tensor(_massmatrix)
         self._mm = mm[:, :7, :7]
         self._cube_state = self._root_state[:, self._cube_id, :]
+        self._cube2_state = self._root_state[:, self._cube2_id, :]
         self._target_state = self._root_state[:, self._target_id, :]
 
         # Initialize states
         self.states.update({
             "cube_size": torch.ones_like(self._eef_state[:, 0]) * self.cube_size,
+            "cube2_size": torch.ones_like(self._eef_state[:, 0]) * self.cube_size,
             "target_size": torch.ones_like(self._eef_state[:, 0]) * self.target_size,
         })
 
@@ -417,6 +440,7 @@ class FrankaCubeMove(VecTask):
         self._gripper_control = self._pos_control[:, 7:9]
 
         # Initialize indices
+        # TODO: change 5 -> 6 since we added anoither cube?
         self._global_indices = torch.arange(self.num_envs * 5, dtype=torch.int32,
                                            device=self.device).view(self.num_envs, -1)
 
@@ -433,6 +457,8 @@ class FrankaCubeMove(VecTask):
             # Cubes
             "cube_quat": self._cube_state[:, 3:7],
             "cube_pos": self._cube_state[:, :3],
+            "cube2_quat": self._cube2_state[:, 3:7],
+            "cube2_pos": self._cube2_state[:, :3],
             "cube_pos_relative": self._cube_state[:, :3] - self._eef_state[:, :3],
             "target_quat": self._target_state[:, 3:7],
             "target_pos": self._target_state[:, :3],
@@ -458,9 +484,10 @@ class FrankaCubeMove(VecTask):
         next_states = {
             'target_size': self.states['target_size'],
             'cube_size': self.states['cube_size'],
-            'cube_pos': next_observations[..., 4:7],
-            'cube_pos_relative': next_observations[..., 4:7] - next_observations[..., 10:13],
-            'cube_to_target_pos': next_observations[..., 7:10],
+            'cube_pos': next_observations[..., 4:7], # 0-4 c1 rotation, 4-7 c1 pos, 7-11 c2 rotation, 11-14 c2 pos, 14-17 cube to target pos
+            'cube2_pos': next_observations[..., 11:14],
+            'cube_pos_relative': next_observations[..., 4:7] - next_observations[..., 14:17],
+            'cube_to_target_pos': next_observations[..., 14:17],
         }
         rewards, _ = compute_franka_reward(
             self.reset_buf, self.progress_buf, self.actions, next_states, self.reward_settings, self.max_episode_length
@@ -469,7 +496,7 @@ class FrankaCubeMove(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cube_quat", "cube_pos", "cube_to_target_pos", "eef_pos"]
+        obs = ["cube_quat", "cube_pos", "cube2_quat", "cube2_pos", "cube_to_target_pos", "eef_pos"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
         maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
@@ -485,7 +512,7 @@ class FrankaCubeMove(VecTask):
         state_dict = {
             "agent": obs[:, 10:],
             "objects_dyn": np.concatenate((obs[:, 4:7], obs[:, :4]), axis=-1).reshape(1, -1, 7),
-            "objects_static": (obs[:, 4:7] + obs[:, 7:10]).reshape(1, -1, 3),
+            "objects_static": (obs[:, 4:7] + obs[:, 14:17]).reshape(1, -1, 3), # cube pos + cube to target pos = target pos
         }
         return state_dict
     
