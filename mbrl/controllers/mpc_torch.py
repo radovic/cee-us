@@ -328,7 +328,7 @@ class TorchMpcICem(MpcController):
             # keep elites from prev. iteration  # Important improvement
             if i > 0 and self.keep_previous_elites:
                 assert self.elite_samples
-                simulated_paths.extend(self.elite_samples[:, : int(len(self.elite_samples) * self.fraction_elites_reused)])
+                simulated_paths.extend(self.elite_samples[:, : int(list(self.elite_samples.buffer.values())[0].shape[1] * self.fraction_elites_reused)])
 
             if self._ensemble_size:
                 self.trajectory_cost_fn(
@@ -479,11 +479,11 @@ class TorchMpcICem(MpcController):
 
         # fit around mean of elites
         if self._ensemble_size:  # case for the ensemble
-            new_mean = torch.mean(elite_sequences, dim=(0, 1, 2, 3))
-            new_std = torch.std(elite_sequences, dim=(0, 1, 2, 3))
+            new_mean = torch.mean(elite_sequences, dim=(1, 2))
+            new_std = torch.std(elite_sequences, dim=(1, 2))
         else:
-            new_mean = torch.mean(elite_sequences, dim=(0, 1, 2))
-            new_std = torch.std(elite_sequences, dim=(0, 1, 2))
+            new_mean = torch.mean(elite_sequences, dim=1)
+            new_std = torch.std(elite_sequences, dim=1)
 
         torch.mul(1 - self.alpha, new_mean, out=new_mean)
         torch.mul(1 - self.alpha, new_std, out=new_std)

@@ -21,6 +21,7 @@ post_rollout_hooks: [
 ] 
 
 eval_buffers: []
+seed: 2024
 
 number_of_rollouts: 20 # 20
 training_iterations: 305
