@@ -24,7 +24,7 @@ def interaction_tracker_hook(_locals, _globals, **kwargs):
     factor_for_relative_scaling = latest_rollouts["observations"].shape[0]
 
     for i, obj_name in enumerate(env.env_body_names):
-        rel_time = np.sum(moved_objects_indices[i,:]) / factor_for_relative_scaling
+        rel_time = np.sum(moved_objects_indices[i, :]) / factor_for_relative_scaling
         metrics[obj_name + '_rel_time'] = rel_time
         logger.log(rel_time, key=obj_name + '_rel_time')
 

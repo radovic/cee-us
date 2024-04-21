@@ -101,8 +101,8 @@ class FrankaCubeMove(VecTask):
             "Invalid control type specified. Must be one of: {osc, joint_tor}"
 
         # dimensions
-        # obs include: cube_pose (7) + cube2 pose (7) + target_pos (3) + eef_pose (3) + q_gripper (2)
-        self.cfg["env"]["numObservations"] = 22 if self.control_type == "osc" else 29
+        # obs include: cube_pose (7) + cube2 pose (7) + eef_pose (3) + q_gripper (2)
+        self.cfg["env"]["numObservations"] = 19 if self.control_type == "osc" else 29
         # actions include: delta EEF if OSC (3) or joint torques (7) + bool gripper (1)
         self.cfg["env"]["numActions"] = 4 if self.control_type == "osc" else 8
 
@@ -497,7 +497,7 @@ class FrankaCubeMove(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cube_quat", "cube_pos", "cube2_quat", "cube2_pos", "cube_to_target_pos", "eef_pos"]
+        obs = ["cube_quat", "cube_pos", "cube2_quat", "cube2_pos", "eef_pos"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
         maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
@@ -511,18 +511,18 @@ class FrankaCubeMove(VecTask):
             obs = np.expand_dims(obs, axis=0)
 
         state_dict = {
-            "agent": obs[:, 10:],
-            "objects_dyn": np.concatenate((obs[:, 4:7], obs[:, :4]), axis=-1).reshape(1, -1, 7),
-            "objects_static": (obs[:, 4:7] + obs[:, 14:17]).reshape(1, -1, 3), # cube pos + cube to target pos = target pos
+            "agent": obs[:, 14:],
+            "objects_dyn": np.concatenate((obs[:, 4:7], obs[:, :4], obs[:, 11:14], obs[:, 7:11]), axis=-1).reshape(2, -1, 7),
+            "objects_static": np.array([None] * 2)  # (obs[:, 4:7] + obs[:, 14:17]).reshape(1, -1, 3), # cube pos + cube to target pos = target pos
         }
         return state_dict
     
     # TODO: Improve this function to be more general
     def get_object_dims(self):
-        agent_dim = 6
-        object_dyn_dim = 14
-        object_stat_dim = 3
-        nObj = 1
+        agent_dim = 5
+        object_dyn_dim = 7
+        object_stat_dim = 0 # 3
+        nObj = 2
         return agent_dim, object_dyn_dim, object_stat_dim, nObj
 
     def reset_idx(self, env_ids):
