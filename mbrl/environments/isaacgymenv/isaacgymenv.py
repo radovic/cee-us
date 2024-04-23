@@ -32,7 +32,12 @@ class IsaacGymEnv(utils.EzPickle):
         self.viewer = None # TODO: Check if needed
         self.metadata = {
             "render.modes": ["human", "rgb_array"],
-        } # TODO: Check if needed
+        }
+
+        # TODO: improve this
+        # Get body names
+        self.agent_dim, self.object_dyn_dim, self.object_stat_dim, self.nObj = self.ig_env.get_object_dims()
+        self.env_body_names = [f'cube{i}' for i in range(self.nObj)]
 
         self.initial_state = copy.deepcopy(self.ig_env.gym.get_sim_params(self.ig_env.sim))
 
@@ -58,10 +63,8 @@ class IsaacGymEnv(utils.EzPickle):
             isaacgymenvs_path,
         )
 
-    '''
     def set_state(self):
-        raise NotImplementedError
-    '''
+        raise NotImplementedError('Setting state is not implemented yet')
 
     def seed(self, seed):
         self.np_random, seed = seeding.np_random(seed)
@@ -81,24 +84,30 @@ class IsaacGymEnv(utils.EzPickle):
         return self.ig_env.compute_reward
 
     def step(self, action):
-        action = torch.Tensor([action] * self.num_envs).to(self.ig_env.device) # TODO: TEMPORARY: Clone the action for all environments
+        action = torch.Tensor(action).to(self.ig_env.device)
         obs, rew, done, info = self.ig_env.step(action)
-        return (obs['obs'][0].cpu().detach().numpy(), rew[0].cpu().detach().numpy(), done[0].cpu().detach().numpy(), {}) # TODO: TEMPORARY: Only return the first observation
+
+        for k, v in info.items():
+            if isinstance(v, torch.Tensor):
+                info[k] = v.cpu().detach().numpy()
+                
+        return (obs['obs'].cpu().detach().numpy(), rew.cpu().detach().numpy(), done.cpu().detach().numpy(), info)
 
     def compute_reward(self):
         return self.ig_env.compute_reward()
 
     def reset(self):
-        return self.ig_env.reset()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        self.ig_env.reset_idx(torch.arange(self.num_envs, device=self.ig_env.device))
+        return self._get_obs()
 
     def _get_obs(self):
-        return self.ig_env.compute_observations()['obs'][0].cpu().detach().numpy() # TODO: TEMPORARY: Only return the first observation
+        return self.ig_env.compute_observations().cpu().detach().numpy()
     
     def render(self, mode="human"):
         self.ig_env.render(mode=mode)
 
     def close(self):
-        self.ig_env.close()
+        pass
 
 
 if __name__ == "__main__":

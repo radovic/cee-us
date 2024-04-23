@@ -75,8 +75,8 @@ class IsaacSimGroundTruthSupportEnv(ABC):
         return self.reset()
 
     def get_fps(self):
-        if hasattr(self, "dt"):
-            return int(np.round(1.0 / self.dt))
+        if hasattr(self.ig_env, "dt"):
+            return int(np.round(1.0 / self.ig_env.dt))
         elif hasattr(self, "metadata") and "video.frames_per_second" in self.metadata:
             return self.metadata["video.frames_per_second"]
         else:

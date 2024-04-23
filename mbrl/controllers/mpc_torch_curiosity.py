@@ -42,23 +42,23 @@ class TorchCuriosityMpcICem(TorchMpcICem):
             requires_grad=False,
         )
 
-    def _model_epistemic_costs(self, rollout_buffer: RolloutBuffer):
-        ensemble_dim = 1
+    def _model_epistemic_costs(self, rollout_buffer: RolloutBuffer): 
+        ensemble_dim = 2
 
-        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [p,e,h,obs_dim]
+        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [num_envs, p, e, h, obs_dim]
         torch.std(mean_next_obs, dim=ensemble_dim, out=self.stds_of_means_)
 
-        self._epistemic_bonus_per_path = self.stds_of_means_.sum(dim=-1)  # [p,h]
+        self._epistemic_bonus_per_path = self.stds_of_means_.sum(dim=-1)  # [num_envs, p, h]
 
     @torch.no_grad()
     def trajectory_cost_fn(self, cost_fn, rollout_buffer: RolloutBuffer, out: torch.Tensor):
         if self.use_env_reward:
             raise NotImplementedError()
-            # costs_path shape: [p,h] or [p,ensemble_models,h]
+            # costs_path shape: [num_envs, p, h] or [num_envs, p, ensemble_models, h]
 
         self._model_epistemic_costs(rollout_buffer)
 
-        costs_path = -self._epistemic_bonus_per_path.unsqueeze(1).expand(-1, self._ensemble_size, -1)
+        costs_path = -self._epistemic_bonus_per_path.unsqueeze(2).expand(-1, -1, self._ensemble_size, -1) # [num_envs, p, ensemble_models, h]
         if self._w_extrinsic_reward:
             env_cost = cost_fn(
                 rollout_buffer.as_array("observations"),

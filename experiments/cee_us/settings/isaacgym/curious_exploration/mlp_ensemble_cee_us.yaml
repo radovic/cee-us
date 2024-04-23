@@ -21,25 +21,29 @@ post_rollout_hooks: [
 ] 
 
 eval_buffers: []
+seed: 2024
 
-number_of_rollouts: 10
-training_iterations: 300
+
+number_of_rollouts: 20
+training_iterations: 305
 
 rollout_params:
     render: false
-    task_horizon: 200
+    task_horizon: 100
 
 horizon: 30
 
 controller_params:
   horizon: 30
-  num_simulated_trajectories: 64
+  cost_along_trajectory: "best"
+  num_simulated_trajectories: 128
   action_sampler_params: 
-    elites_size: 5
+    elites_size: 10
 
 checkpoints:
+    load: false
     save_every_n_iter: 25
 
-working_dir: "results/cee_us/isaacgym/mlp_ensemble_cee_us_freeplay"
+working_dir: "results/cee_us/vectorized_ig/vectorized_cluster_mlp_ensemble"
 
 device: "cuda:0"

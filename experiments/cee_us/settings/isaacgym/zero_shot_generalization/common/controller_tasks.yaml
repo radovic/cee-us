@@ -3,10 +3,10 @@ __import__:
 
 env: "IsaacGymEnv"
 env_params:
-  task: "FrankaCubeStack"
-  num_envs: 5
+  task: "FrankaCubeMove"
+  num_envs: 1
   headless: False
-  isaacgymenvs_path: ""
+  isaacgymenvs_path: "./mbrl/environments/isaacgymenv/custom_envs"
   show_cfg: True
 
 # Task choices: [FrankaCubeStack]
@@ -26,7 +26,7 @@ controller_params:
   horizon: 40
   num_simulated_trajectories: 64
   factor_decrease_num: 1
-  cost_along_trajectory: "sum"
+  cost_along_trajectory: "best"
   use_env_reward: false
   action_sampler_params: 
     opt_iterations: 3

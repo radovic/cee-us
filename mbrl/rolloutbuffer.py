@@ -35,6 +35,7 @@ class Rollout(object):
         if not transitions:
             raise ValueError("No data given!")
 
+        self.transitions = transitions
         self.dtype = [(name, "f8", np.array(item).shape) for name, item in zip(field_names, transitions[0])]
         self._data = np.array(transitions, dtype=self.dtype)
 
@@ -43,6 +44,21 @@ class Rollout(object):
         field_names = kwargs.keys()
         transitions = zip(*kwargs.values())
         return cls(field_names, transitions)
+    
+    # TODO: Make this more efficient!
+    def to_train(self):
+        new_transitions = []
+        for i in range(len(self.transitions)):
+            l = self.transitions[i][0].shape[0]
+            new_tups = [()] * l
+            for j in range(len(self.transitions[i])):
+                for k in range(l):
+                    new_tups[k] += (self.transitions[i][j][k], ) if self.transitions[i][j] is not None else (None, )
+            new_transitions.extend(new_tups)
+
+        self.transitions = new_transitions
+        self.dtype = [(name, "f8", np.array(item).shape) for name, item in zip(self.field_names(), self.transitions[0])]
+        self._data = np.array(self.transitions, dtype=self.dtype)
 
     def cost_to_go(self, t, discount=1.0):
         return sum([self._data["rewards"][i] * discount ** (t - i) for i in range(t, len(self._data))])
@@ -129,7 +145,7 @@ class SimpleRolloutBuffer(abc.Sequence):
 
     # TODO: make it more efficient
     def extend(self, other):
-        self.buffer = {key: torch.cat([self[key], other[key]], 0) for key in self.buffer}
+        self.buffer = {key: torch.cat([self[key], other[key]], 1) for key in self.buffer}
 
     def __add__(self, other):
         assert isinstance(other, SimpleRolloutBuffer)
@@ -178,6 +194,10 @@ class RolloutBuffer(abc.Sequence):
             if sum([1 for fields in all_field_names if f not in fields]) == 0:
                 yield f
 
+    def to_train(self):
+        for r in self.rollouts:
+            r.to_train()
+
     @property
     def flat(self):
         if self.rollouts.modified:
@@ -219,7 +239,7 @@ class RolloutBuffer(abc.Sequence):
     def latest_rollouts(self):
         last_rollouts = self.rollouts[-self.rollouts.number_of_latest_data_elems_added :]
         return RolloutBuffer(rollouts=last_rollouts)
-
+    
     def last_n_iterations(self, num_iter=1):
         return self.last_n_rollouts(sum(self.rollouts.list_number_of_latest_data_elems_added[-num_iter:]))
 
