@@ -20,6 +20,9 @@ from mbrl.helpers import hook_executer, tqdm_context
 from mbrl.parallel_utils import CloudPickleWrapper, clear_mpi_env_vars
 from mbrl.rolloutbuffer import Rollout
 from mbrl.seeding import Seeding
+from mbrl.environments.wrappers.fix_dimensions import SingleEnvironmentWrapper
+
+
 
 # noinspection PyUnresolvedReferences
 
@@ -31,6 +34,12 @@ class RolloutManager:
 
     def __init__(self, env, roll_params):
         self.env = env
+
+        # in case we have a gym.Env which is single env, we wrap the environment,
+        # as to keep training with the vectorized controllers.
+        if not hasattr(env, 'num_envs'):
+            self.env = SingleEnvironmentWrapper(env)
+
         self.task_horizon = roll_params.task_horizon
         self.record = roll_params.record
         self.only_final_reward = False if "only_final_reward" not in roll_params else roll_params.only_final_reward
