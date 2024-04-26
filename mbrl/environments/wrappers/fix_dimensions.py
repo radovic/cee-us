@@ -20,6 +20,9 @@ class SingleEnvironmentWrapper(EnvWrapper):
         rew = np.expand_dims(rew, 0)
         done = np.expand_dims(done, 0)
 
+        for k, v in info_dict.items():
+            info_dict[k] = np.expand_dims(v, 0)
+
         return next_ob, rew, done, info_dict
 
     def set_state_from_observation(self, ob):
