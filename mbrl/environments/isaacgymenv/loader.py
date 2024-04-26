@@ -42,6 +42,11 @@ def load_isaacgym_env(task: str = "",
                         headless: Optional[bool] = None,
                         isaacgymenvs_path: str = "",
                         show_cfg: bool = True):
+    """
+    This is function loads an Isaac Gym 
+    environment based on a given task name. It uses Hydra to load the configuration 
+    file of the specified task. This configuration file contains settings for the simulation environment.
+    """
 
     import isaacgym
     import isaacgymenvs
@@ -94,10 +99,19 @@ def load_isaacgym_env(task: str = "",
     except Exception as e:
         pass
 
-    # get hydra config without use @hydra.main
+    # ======== Get hydra config without use @hydra.main
+    
+    # This line reinitializes Hydra by clearing its internal state. 
+    # This is necessary because 
+    # Hydra caches its configuration data, and we want to ensure that we start with a 
+    # clean slate for our current run.
     hydra.core.global_hydra.GlobalHydra.instance().clear() # re-initialize hydra
+    
+    # Sets the path where Hydra should search for the configuration files.
     config_file = "config"
     search_path = create_automatic_config_search_path(config_file, None, config_path)
+    
+    # Creates a Hydra object 
     hydra_object = Hydra.create_main_hydra2(task_name='load_isaacgymenv', config_search_path=search_path)
     config = hydra_object.compose_config(config_file, overrides, run_mode=RunMode.RUN)
 
