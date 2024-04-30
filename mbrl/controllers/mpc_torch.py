@@ -153,12 +153,15 @@ class TorchMpcICem(MpcController):
             else:
                 self.start_states_ = [None] * self.num_sim_traj * self.num_envs
 
+            # forward pass through the model, flatten the env dimension onto the batch dimension.
             rb = self.forward_model.predict_n_steps(
                 start_observations=self.start_obs_.reshape(-1, self.start_obs_.shape[-1]),
                 start_states=self.start_states_,
                 policy=OpenLoopPolicy(action_sequences.reshape(-1, action_sequences.shape[-2], action_sequences.shape[-1])),
                 horizon=self.horizon,
             )[0]
+
+            # reverse the flattening of the env dimension.
             for k in rb.buffer.keys():
                 if self._ensemble_size:
                     rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self._ensemble_size, self.horizon, rb.buffer[k].shape[-1])
@@ -168,6 +171,27 @@ class TorchMpcICem(MpcController):
 
     @torch.no_grad()
     def beginning_of_rollout(self, *, observation, state=None, mode):
+        """
+        Called at the beginning of each rollout. Resets internal variables and
+        sets up for evaluation.
+
+        Args:
+            observation (obj): The initial observation.
+            state (optional): The initial state. Defaults to None.
+            mode (str): The mode of operation, e.g. 'train' or 'eval'.
+
+        Notes:
+            - Resets the mean and standard deviation of the policy.
+            - Sets elite samples to None.
+            - Sets a flag indicating that the internal state has been reset.
+            - Calculates the total number of model evaluations required per step
+            based on the horizon length, number of simultaneous trajectories,
+            and factor for decreasing the number of trajectories over iterations.
+
+        Returns:
+            None
+        """
+        
         super().beginning_of_rollout(observation=observation, state=state, mode=mode)
         self.reset_mean(self.mean_, self.relative_init)
         self.reset_std(self.std_, self.relative_init)
@@ -214,9 +238,28 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def sample_action_sequences(self, obs, num_traj, time_slice=None):
         """
-        :param num_traj: number of trajectories
-        :param obs: current observation
-        :type time_slice: slice
+        Samples action sequences for the specified number of trajectories and 
+        optional time slice.
+
+        Args:
+            obs (obj): The current observation.
+            num_traj (int): The number of trajectories to sample.
+            time_slice (optional): A slice object specifying the time steps to 
+            consider. Defaults to None, which means all time steps are considered.
+
+        Returns:
+            torch.Tensor: The sampled action sequences with shape `(num_envs, 
+            num_traj, horizon, d)` where `d` is the dimensionality of the actions.
+
+        Notes:
+            - If colored noise is enabled, it uses a power-law distributed Gaussian 
+            process to generate samples.
+            - Otherwise, it simply draws samples from a normal distribution and 
+            scales them according to the mean and standard deviation of the policy.
+            - The sampled action sequences are then clipped to ensure they lie 
+            within the valid action range (as defined by `action_low_tensor` and 
+            `action_high_tensor`).
+
         """
 
         # colored noise
@@ -260,16 +303,35 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def elites_2_action_sequences(self, *, elites, obs, fraction_to_be_used=1.0):
         """
-        :param obs: current observation of shape [obs_dim]
-        :param fraction_to_be_used:
-        :type elites: RolloutBuffer
+        Converts elite actions to action sequences and concatenates them with the 
+        sampled next action.
+
+        Args:
+            elites (RolloutBuffer): The buffer containing elite actions.
+            obs (torch.Tensor): The current observation of shape `[obs_dim]`.
+            fraction_to_be_used (float, optional): The fraction of elite actions to 
+            use. Defaults to 1.0, which means all elite actions are used.
+
+        Returns:
+            torch.Tensor: The concatenated action sequences with shape `(p, h+1, d)` 
+            where `h` is the horizon and `d` is the dimensionality of the actions.
+
+        Notes:
+            - This method first extracts the elite actions from the given buffer.
+            - It then selects a fraction of these elite actions (based on the 
+            provided fraction) to use as the starting point for the action sequence.
+            - The remaining time steps are sampled using `sample_action_sequences` 
+            with the provided observation and the number of elites used.
         """
+
         actions = elites.as_array("actions").to(torch_helpers.device)  # shape: [p,h,d]
+        
         if self._ensemble_size:
             # taking action seq of first model (they are all the same anyway)
             reused_actions = actions[:, :, 0, 1:]
         else:
             reused_actions = actions[:, :, 1:]  # shape: [p,h-1,d]
+        
         num_elites = int(reused_actions.shape[1] * fraction_to_be_used)
         reused_actions = reused_actions[:, :num_elites]
         # shape:[p,1,d]
@@ -280,6 +342,24 @@ class TorchMpcICem(MpcController):
     # Fine tuning
     @torch.no_grad()
     def randomize_first_actions(self, *, action_sequence, obs, num_traj):
+        """
+        Randomizes the first actions of an action sequence.
+
+        Args:
+            action_sequence (torch.Tensor): The original action sequence with shape 
+            `(h, d)`.
+            obs (torch.Tensor): The current observation.
+            num_traj (int): The number of trajectories to generate.
+
+        Returns:
+            torch.Tensor: The modified action sequence with random first actions and 
+            shape `(num_traj, h, d)`.
+
+        Notes:
+            - This method is only called when `use_async_action` is False.
+            - It generates new random first actions using `sample_action_sequences` 
+            and then replaces the original first actions in the given action sequence.
+        """
         assert not self.use_async_action
         new_first_actions = torch.squeeze(
             self.sample_action_sequences(time_slice=(0, 1), obs=obs, num_traj=num_traj),
@@ -292,7 +372,28 @@ class TorchMpcICem(MpcController):
 
     @torch.no_grad()
     def get_action(self, obs, state, mode="train"):
+        """
+        Get the next action to take in the environment.
 
+        Args:
+            obs (torch.tensor): The current observation.
+            state: The current state of the environment.
+            mode (str): The mode of operation. Defaults to "train".
+
+        Returns:
+            torch.tensor: The next action to take.
+
+        Raises:
+            AttributeError: If `beginning_of_rollout()` has not been called before.
+
+        Notes:
+            This function simulates a trajectory of actions and evaluates their 
+            costs.
+            It then selects the best action based on these costs. The 
+            `forward_model_state`
+            is updated after each iteration. If `mode` is "train", this function also
+            updates the distributions used for selecting actions.
+        """
         if not self.was_reset:
             raise AttributeError("beginning_of_rollout() needs to be called before")
 
