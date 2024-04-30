@@ -34,6 +34,7 @@ class TorchMpcICem(MpcController):
         self.use_async_action = use_async_action
         self._ensemble_size = getattr(self.forward_model, "ensemble_size", None)
 
+        # in case the forward_model is not a pyTorch Model
         if not isinstance(self.forward_model, TorchModel):
             warnings.warn(
                 "Forward model is not TorchModel, wrapping for compatibility, this might cause things to become slow!"
@@ -308,7 +309,10 @@ class TorchMpcICem(MpcController):
 
         num_sim_traj = self.num_sim_traj
         for i in range(self.opt_iter):
+
+            # shape (num_traj, horizon, action_dim)
             action_sequences = self.prepare_action_sequences(obs=obs, num_traj=num_sim_traj, iteration=i)
+            
             # Shifting elites over time
             action_seq_from_elites = None
             if i == 0 and self.shift_elites_over_time and self.elite_samples is not None:

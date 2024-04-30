@@ -451,7 +451,7 @@ class FrankaCubeMove(VecTask):
 
     def compute_reward(self, actions):
         self.rew_buf[:], self.reset_buf[:] = compute_franka_reward(
-            self.reset_buf, self.progress_buf, self.actions, self.states, self.reward_settings, self.max_episode_length
+            self.reset_buf, self.progress_buf, actions, self.states, self.reward_settings, self.max_episode_length
         )
     
     def compute_reward_sas(self, observations, actions, next_observations):
@@ -463,7 +463,7 @@ class FrankaCubeMove(VecTask):
             'cube_to_target_pos': next_observations[..., 7:10],
         }
         rewards, _ = compute_franka_reward(
-            self.reset_buf, self.progress_buf, self.actions, next_states, self.reward_settings, self.max_episode_length
+            self.reset_buf, self.progress_buf, actions, next_states, self.reward_settings, self.max_episode_length
         )
         return rewards
 
@@ -750,7 +750,7 @@ class FrankaCubeMove(VecTask):
 #####################################################################
 
 
-@torch.jit.script
+#@torch.jit.script
 def compute_franka_reward(
     reset_buf, progress_buf, actions, states, reward_settings, max_episode_length
 ):
@@ -766,13 +766,20 @@ def compute_franka_reward(
     # d_lf = torch.norm(states["cube_pos"] - states["eef_lf_pos"], dim=-1)
     # d_rf = torch.norm(states["cube_pos"] - states["eef_rf_pos"], dim=-1)
     dist_reward = 1 - torch.tanh(10.0 * d)
-
+    """
     # distance from the cube to the target
     offset = torch.zeros_like(states["cube_to_target_pos"])
-    if offset.ndim > 2: offset.transpose(1, 2)[..., 2] = (cube_size + target_size) / 2
-    else: offset[..., 2] = (cube_size + target_size) / 2
+
+    # TODO: Why do we need this? Why offset? The cube and the target are not colliding.
+    if offset.ndim > 2: 
+        distance_offset = (cube_size + target_size) / 2
+        offset.transpose(1, 2)[..., 2] = distance_offset
+    else: 
+        offset[..., 2] = (cube_size + target_size) / 2
     # offset[..., 2] = (cube_size + target_size) / 2
     d_cube_target = torch.norm(states["cube_to_target_pos"] + offset, dim=-1)
+    """
+    d_cube_target = torch.norm(states["cube_to_target_pos"], dim=-1)
     dist_target_reward = 1 - torch.tanh(10.0 * d_cube_target)
 
     reward_settings['r_dist_target_scale'] = 1.0
