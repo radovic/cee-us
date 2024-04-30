@@ -10,9 +10,15 @@ import numpy as np
 from gym import utils
 
 from mbrl import seeding
+from typing import Tuple
 
 # Code taken and modified to mujoco_py from: https://github.com/google-research/robodesk
 class IsaacGymEnv(utils.EzPickle):
+    """
+    This class is a wrapper for an Isaac Gym environment. 
+    It initializes an Isaac Gym environment with specific settings (task, number 
+    of environments, headless mode, path to environment files).
+    """
     def __init__(
         self,
         name="IsaacGymEnv",
@@ -83,7 +89,24 @@ class IsaacGymEnv(utils.EzPickle):
     def _get_task_reward(self):
         return self.ig_env.compute_reward
 
-    def step(self, action):
+    def step(self, action : np.array) -> Tuple[np.array, np.array, np.array, np.array]:
+        """
+        Takes an action in the environment and returns the next observation, reward, 
+            done flag, and info dictionary.
+
+        Args:
+            action: The action to take in the environment.
+
+        Returns:
+            A tuple containing the following elements:
+                obs (dict): The new observation from the environment.
+                rew (float): The reward for taking this action.
+                done (bool): Whether the episode has ended.
+                info (dict): Any additional information about the step, such as 
+                                whether the episode ended.
+        """
+
+        
         action = torch.Tensor(action).to(self.ig_env.device)
         obs, rew, done, info = self.ig_env.step(action)
 
