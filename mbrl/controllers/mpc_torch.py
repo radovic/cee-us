@@ -397,14 +397,12 @@ class TorchMpcICem(MpcController):
         if not self.was_reset:
             raise AttributeError("beginning_of_rollout() needs to be called before")
 
+        # get the starting state for stateful models.
         self.forward_model_state = self.forward_model.got_actual_observation_and_env_state(
             observation=obs, env_state=state, model_state=self.forward_model_state
         )
 
         best_traj_idx = None
-
-        # start_obs = np.empty((self.forward_model.ensemble_params['n'], self.num_sim_traj, obs.shape[0]))
-        # start_obs[...,:] = obs
         start_obs = torch.tensor(obs, dtype=torch.float32)
         self.start_obs_[..., :] = start_obs[:, None, :]
 
@@ -476,19 +474,26 @@ class TorchMpcICem(MpcController):
             self.update_distributions(simulated_paths, self.costs_)
 
         if self.finetune_first_action:
+
+            # Get the best action sequences
             best_rollout_before = simulated_paths[torch.arange(self.num_envs), best_traj_idx, :, :]
             best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :]
             action_sequences = self.randomize_first_actions(
                 action_sequence=best_actions, num_traj=num_sim_traj, obs=obs
             )
+
+            # Simulate new trajectories with the randomized first actions
             simulated_paths = self.simulate_trajectories(
                 obs=obs,
                 state=self.forward_model_state,
                 action_sequences=action_sequences,
             )
+
             simulated_paths = simulated_paths.reshape(self.num_envs, self.num_sim_traj, self.horizon, -1)
             # also add last best traj to not regret
             simulated_paths.append(best_rollout_before)
+            
+            # Calculate the costs for each simulated path
             orig_cost = self.trajectory_cost_fn(self.cost_fn, simulated_paths)  # shape: [num_sim_paths]
             costs = orig_cost.copy()
 
@@ -564,8 +569,25 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def update_distributions(self, sampled_trajectories: SimpleRolloutBuffer, costs):
         """
-        :param sampled_trajectories:
-        :param costs: array of costs: shape (number trajectories)
+        Updates the mean and standard deviation of the policy distribution based on 
+        the elite trajectories.
+
+        Parameters:
+            sampled_trajectories (SimpleRolloutBuffer): The set of sampled 
+            trajectories to consider.
+            costs (array_like): An array of costs corresponding to each trajectory, 
+            shape `(num_trajectories,)`
+
+        Returns:
+            None
+
+        Notes:
+            - This method updates the mean and standard deviation of the policy 
+                distribution based on the elite trajectories.
+            - If `fully_deterministic` is True, the sorting of the costs is done in a
+                stable manner to ensure consistent results.
+            - The ensemble size (i.e., the number of elite samples) is used to 
+                calculate the new mean and standard deviation.
         """
         if self.fully_deterministic:
             # FOR STABLE SORTING!!!

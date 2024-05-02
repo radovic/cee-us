@@ -166,6 +166,11 @@ class TorchMpcMPPI(MpcController):
 
     def sample_action_sequences(self):
     
+        if self.colored_noise:
+            raise NotImplementedError(
+                "Colored noise wasn't implemented yet."
+            )
+        
         # (num_envs, num_trajs, horizon_n, a_dim)
         torch.randn(size=self.delta_u_.shape,
                               device=torch_helpers.device, dtype=torch.float32, out=self.delta_u_)
@@ -221,26 +226,21 @@ class TorchMpcMPPI(MpcController):
                                               action_sequences=action_sequences)
 
         # writes the costs into pre-allocated buffer self.costs_.
-        # In case we have ensembles, we 
         if self._ensemble_size:
                 self.trajectory_cost_fn(
                     self.cost_fn, rollouts, out=self.costs_per_model_
                 )  # shape [num_envs, num_sim_traj, num_models]
 
-                # TODO: mean over which dimension? -> Should sum out the ensemble dimension.
                 torch.mean(self.costs_per_model_, -1, out=self.costs_) # shape: [num_envs, self.num_sim_traj]
-                # could be used to weigh the costs
                 torch.std(self.costs_per_model_, -1, out=self.costs_std_)
 
                 if self.use_ensemble_cost_std:
                     torch.add(self.costs_, self.costs_std_, out=self.costs_)
         else:
-            # TODO: shape correct?
             self.trajectory_cost_fn(self.cost_fn, rollouts, out=self.costs_)  # shape: [self.num_envs, self.num_sim_traj]
             
         # calculate weighting. The less cost a action sequence has accumulated, the 
         # heavier its influence on the best action sequence should be.
-        # TODO: check all shapes from here on out.
         # Calculate the min over the last dimension === the trajectory dimension.
         torch.subtract(self.costs_, self.costs_.min(-1, keepdims=True)[0], out=self.costs_)
         torch.mul(self.costs_, 1/self.temperature, out=self.costs_)
@@ -298,7 +298,6 @@ class TorchMpcMPPI(MpcController):
             else:
                 self.start_states_ = [None] * self.num_sim_traj * self.num_envs
 
-            # TODO: why are we calling the forward model with start_obs???
             rb = self.forward_model.predict_n_steps(
                 start_observations=obs.reshape(-1, obs.shape[-1]),
                 start_states=self.start_states_,
@@ -311,13 +310,6 @@ class TorchMpcMPPI(MpcController):
                 else:
                     rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
             return rb
-        
-            """return self.forward_model.predict_n_steps(
-                start_observations=obs,
-                start_states=self.start_states_,
-                policy=OpenLoopPolicy(action_sequences),
-                horizon=self.horizon,
-            )[0]"""
         
     def _parse_action_sampler_params(
         self,
