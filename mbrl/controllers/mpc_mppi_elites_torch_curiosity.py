@@ -1,44 +1,19 @@
 import torch
 
 from mbrl import torch_helpers
-from mbrl.controllers.mpc_torch import TorchMpcICem
+from mbrl.controllers.mpc_mppi_elites_torch import TorchMpcMPPIElites
 from mbrl.rolloutbuffer import RolloutBuffer
 
 
-# our improved CEM
-class TorchCuriosityMpcICem(TorchMpcICem):
-    """
-    This class extends the base TorchMpcICem model predictive control (MPC) class
-    to incorporate epistemic uncertainty in an ensemble of forward models. The 
-    epistemic uncertainty is used to guide the agent's exploration and 
-    decision-making process.
-
-    Methods:
-        preallocate_memory(): preallocates memory for distribution parameters and
-        epistemic bonus per path
-        _model_epistemic_costs(rollout_buffer): computes the epistemic costs 
-        associated with each rollout buffer
-        trajectory_cost_fn(cost_fn, rollout_buffer, out): computes the cost 
-        function along a trajectory, incorporating both intrinsic and extrinsic rewards
-
-    Notes:
-        This class is designed to work with a specific type of model predictive 
-        control problem where the goal is to optimize the epistemic uncertainty in an 
-        ensemble of forward models.
-        The reset_horizon(horizon) method can be used to change the horizon of 
-        the MPC, which will re-allocate memory and update the forward model's parameters 
-        accordingly.
-
-    References:
-        https://proceedings.neurips.cc/paper_files/paper/2022/file/98ecdc722006c2959babbdbdeb22eb75-Paper-Conference.pdf
-    """
-    
+class TorchCuriosityMpcMPPI(TorchMpcMPPIElites):
     def __init__(self, *, object_centric=False, extrinsic_reward=False, extrinsic_reward_scale=1.0, **kwargs):
 
         super().__init__(**kwargs)
         self._w_object_centric = object_centric
         self._w_extrinsic_reward = extrinsic_reward
         self._maybe_extrinsic_reward_scale = extrinsic_reward_scale
+
+        assert self._ensemble_size > 1, "TorchCuriosityMpcMPPI only for use with ensemble models. Please choose forward model with ensemble dimension."
 
     @torch.no_grad()
     def preallocate_memory(self):
@@ -73,7 +48,6 @@ class TorchCuriosityMpcICem(TorchMpcICem):
 
         mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [num_envs, p, e, h, obs_dim]
         torch.std(mean_next_obs, dim=ensemble_dim, out=self.stds_of_means_)
-
         self._epistemic_bonus_per_path = self.stds_of_means_.sum(dim=-1)  # [num_envs, p, h]
 
     @torch.no_grad()
@@ -84,7 +58,8 @@ class TorchCuriosityMpcICem(TorchMpcICem):
 
         self._model_epistemic_costs(rollout_buffer)
 
-        costs_path = -self._epistemic_bonus_per_path.unsqueeze(2).expand(-1, -1, self._ensemble_size, -1) # [num_envs, p, ensemble_models, h]
+        # shape: [num_envs, p, ensemble_models, h]
+        costs_path = -self._epistemic_bonus_per_path.unsqueeze(2).expand(-1, -1, self._ensemble_size, -1) 
         if self._w_extrinsic_reward:
             env_cost = cost_fn(
                 rollout_buffer.as_array("observations"),
