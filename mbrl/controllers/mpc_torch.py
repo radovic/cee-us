@@ -283,11 +283,14 @@ class TorchMpcICem(MpcController):
         assert not self.use_async_action
         new_first_actions = torch.squeeze(
             self.sample_action_sequences(time_slice=(0, 1), obs=obs, num_traj=num_traj),
-            axis=1,
-        )  # shape:[p,d]
-        action_sequence = action_sequence[None, ...]  # shape: [h,d] -> [1,h,d]
-        action_sequence_repeated = action_sequence.expand(num_traj, -1, -1)
-        action_sequence_repeated[:, 0, :] = new_first_actions
+            axis=2,
+        )  # shape:[n_envs, p, d]
+        if action_sequence.ndim == 4:
+            action_sequence = action_sequence[:, 0, ...].squeeze(1)  # shape: [n_envs, e, h, d] -> [n_envs, h, d]
+        action_sequence = action_sequence[:, None, ...]  # shape: [n_envs, h, d] -> [n_envs, 1, h, d]
+        action_sequence_repeated = action_sequence.expand(-1, num_traj, -1, -1) # shape: [n_envs, p, h, d]
+        action_sequence_repeated = action_sequence_repeated.clone() # to avoid errors with inplace operations
+        action_sequence_repeated[..., 0, :] = new_first_actions # 
         return action_sequence_repeated
 
     @torch.no_grad()
@@ -357,10 +360,10 @@ class TorchMpcICem(MpcController):
                 def display_cost(cost):
                     return cost / self.horizon if self.cost_along_trajectory == "sum" else cost
 
-                if simulated_paths["actions"][best_traj_idx].ndim == 5:
-                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), :,  best_traj_idx, :][0][0][0]
+                if simulated_paths["actions"].ndim == 5:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, 0, :]
                 else:
-                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0][0]
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :]
                 print(
                     "iter {}:{} --- best cost: {:.2f} --- mean: {:.2f} --- worst: {:.2f}  best action: {}...".format(
                         i,
@@ -368,7 +371,7 @@ class TorchMpcICem(MpcController):
                         display_cost(torch.amin(self.costs_).item()),
                         display_cost(torch.mean(self.costs_).item()),
                         display_cost(torch.amax(self.costs_).item()),
-                        best_actions[0:6].cpu().numpy(),
+                        best_actions[..., 0:6].cpu().numpy(),
                     )
                 )
 
@@ -376,6 +379,8 @@ class TorchMpcICem(MpcController):
 
         if self.finetune_first_action:
             best_rollout_before = simulated_paths[torch.arange(self.num_envs), best_traj_idx, :, :]
+            for k, v in best_rollout_before.items(): # allow for extending the rollout buffer
+                best_rollout_before[k] = v.unsqueeze(1)
             best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :]
             action_sequences = self.randomize_first_actions(
                 action_sequence=best_actions, num_traj=num_sim_traj, obs=obs
@@ -385,17 +390,23 @@ class TorchMpcICem(MpcController):
                 state=self.forward_model_state,
                 action_sequences=action_sequences,
             )
-            simulated_paths = simulated_paths.reshape(self.num_envs, self.num_sim_traj, self.horizon, -1)
             # also add last best traj to not regret
-            simulated_paths.append(best_rollout_before)
-            orig_cost = self.trajectory_cost_fn(self.cost_fn, simulated_paths)  # shape: [num_sim_paths]
-            costs = orig_cost.copy()
+            simulated_paths.extend(best_rollout_before)
+            orig_cost = None
+            orig_cost = self.trajectory_cost_fn(self.cost_fn, simulated_paths, orig_cost)  
+            if self._ensemble_size:
+                orig_cost = orig_cost[..., 0]
+            # shape: [num_sim_paths]
+            costs = orig_cost.clone()
 
             best_traj_idx = torch.argmin(costs, axis=1)
 
             if self.verbose:
-                best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0]
-                print("best first action after finetuning ({})       {}".format(num_sim_traj, best_actions[0:6]))
+                if self._ensemble_size:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, 0, :]
+                else:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :]
+                print("best first action after finetuning ({})       {}".format(num_sim_traj, best_actions[..., 0:6]))
 
         if self.execute_best_elite:
             if self.use_async_action:
