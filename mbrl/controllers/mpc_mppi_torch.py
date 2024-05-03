@@ -164,16 +164,27 @@ class TorchMpcMPPI(MpcController):
     def end_of_rollout(self, total_time, total_return, mode):
         super().end_of_rollout(total_time, total_return, mode)
 
-    def sample_action_sequences(self):
+    def sample_action_sequences(self, time_slice=None):
     
+        # colored noise
         if self.colored_noise:
-            raise NotImplementedError(
-                "Colored noise wasn't implemented yet."
-            )
-        
-        # (num_envs, num_trajs, horizon_n, a_dim)
-        torch.randn(size=self.delta_u_.shape,
+            assert self.u_.ndim == 3
+            # Important improvement
+            # self.u_ has shape h,d: we need to swap d and h because temporal correlations are in last axis)
+            # noinspection PyUnresolvedReferences
+            
+            # probably inefficient
+            self.delta_u_ = colored_noise.torch_powerlaw_psd_gaussian( # check the horizon length
+                self.noise_beta,
+                size=(self.num_envs, self.num_sim_traj, self.u_.shape[2], self.u_.shape[1]),
+            ).transpose(3, 2)
+
+        else:
+            # (num_envs, num_trajs, horizon_n, a_dim)
+            torch.randn(size=self.delta_u_.shape,
                               device=torch_helpers.device, dtype=torch.float32, out=self.delta_u_)
+
+        
         
         # multiply with std, write back into self.delta_u_
         torch.mul(self.delta_u_, self.std_[:, None, ...], out=self.delta_u_)
@@ -184,6 +195,12 @@ class TorchMpcMPPI(MpcController):
         # clip for legal action range
         torch.min(action_sequences, self.action_high_tensor[:, None, ...], out=action_sequences)
         torch.max(action_sequences, self.action_low_tensor[:, None, ...], out=action_sequences)
+
+        if time_slice is not None:
+            if time_slice[1] is None:
+                action_sequences = action_sequences[:, :, time_slice[0] :]
+            else:
+                action_sequences = action_sequences[:, :, time_slice[0] : time_slice[1]]
 
         return action_sequences
     
@@ -242,6 +259,8 @@ class TorchMpcMPPI(MpcController):
         # calculate weighting. The less cost a action sequence has accumulated, the 
         # heavier its influence on the best action sequence should be.
         # Calculate the min over the last dimension === the trajectory dimension.
+        
+        min_cost = torch.min(self.costs_).item()
         torch.subtract(self.costs_, self.costs_.min(-1, keepdims=True)[0], out=self.costs_)
         torch.mul(self.costs_, 1/self.temperature, out=self.costs_)
 
@@ -266,7 +285,7 @@ class TorchMpcMPPI(MpcController):
             self.mpc_hook.executed_action(obs, executed_action)
 
         if self.logging:
-            self.logger.log(torch.min(self.costs_).item(), key="best_trajectory_cost")
+            self.logger.log(min_cost, key="best_trajectory_cost")
 
         if self.do_visualize_plan:
             best_traj_idx = torch.argmin(self.costs_)
@@ -310,7 +329,7 @@ class TorchMpcMPPI(MpcController):
                 else:
                     rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self.horizon, rb.buffer[k].shape[-1])
             return rb
-        
+
     def _parse_action_sampler_params(
         self,
         *,
