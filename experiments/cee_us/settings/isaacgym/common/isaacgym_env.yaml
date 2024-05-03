@@ -1,6 +1,6 @@
 env: "IsaacGymEnv"
 env_params:
-  task:  "FrankaCubeMove" # "FrankaCubeMove" or "FrankaTwoCubesMove"
+  task:  "FrankaTwoCubesMove" # "FrankaCubeMove" or "FrankaTwoCubesMove"
   num_envs: 20
   headless: True
   isaacgymenvs_path: "./mbrl/environments/isaacgymenv/custom_envs"

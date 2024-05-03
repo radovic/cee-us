@@ -197,6 +197,7 @@ class RolloutBuffer(abc.Sequence):
     def to_train(self):
         for r in self.rollouts:
             r.to_train()
+        self.rollouts.modified = True
 
     @property
     def flat(self):
