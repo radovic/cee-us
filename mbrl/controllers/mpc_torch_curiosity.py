@@ -7,6 +7,32 @@ from mbrl.rolloutbuffer import RolloutBuffer
 
 # our improved CEM
 class TorchCuriosityMpcICem(TorchMpcICem):
+    """
+    This class extends the base TorchMpcICem model predictive control (MPC) class
+    to incorporate epistemic uncertainty in an ensemble of forward models. The 
+    epistemic uncertainty is used to guide the agent's exploration and 
+    decision-making process.
+
+    Methods:
+        preallocate_memory(): preallocates memory for distribution parameters and
+        epistemic bonus per path
+        _model_epistemic_costs(rollout_buffer): computes the epistemic costs 
+        associated with each rollout buffer
+        trajectory_cost_fn(cost_fn, rollout_buffer, out): computes the cost 
+        function along a trajectory, incorporating both intrinsic and extrinsic rewards
+
+    Notes:
+        This class is designed to work with a specific type of model predictive 
+        control problem where the goal is to optimize the epistemic uncertainty in an 
+        ensemble of forward models.
+        The reset_horizon(horizon) method can be used to change the horizon of 
+        the MPC, which will re-allocate memory and update the forward model's parameters 
+        accordingly.
+
+    References:
+        https://proceedings.neurips.cc/paper_files/paper/2022/file/98ecdc722006c2959babbdbdeb22eb75-Paper-Conference.pdf
+    """
+    
     def __init__(self, *, object_centric=False, extrinsic_reward=False, extrinsic_reward_scale=1.0, **kwargs):
 
         super().__init__(**kwargs)
