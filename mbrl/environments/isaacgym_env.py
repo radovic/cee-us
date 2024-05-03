@@ -15,12 +15,13 @@ class IsaacGym(IsaacSimGroundTruthSupportEnv, IsaacGymEnv):
     def viewer_setup(self):
         self.viewer_setup(self)
 
+    # TODO: Implement the method for setting the ground truth state
     def set_GT_state(self, state):
-        self.ig_env.gym.set_sim_params(self.ig_env.sim, state)
-        self.ig_env.gym.simulate(self.ig_env.sim)
+        pass
 
+    # TODO: Implement the method for getting the ground truth state
     def get_GT_state(self):
-        return self.ig_env.gym.get_sim_params(self.ig_env.sim)
+        return None
 
     def set_state_from_observation(self, observation):
         raise NotImplementedError
