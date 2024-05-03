@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from .franka_two_cubes_move import FrankaTwoCubesMove
 from .franka_cube_move import FrankaCubeMove
 
 def resolve_allegro_kuka(cfg, *args, **kwargs):
@@ -58,5 +59,6 @@ def resolve_allegro_kuka_two_arms(cfg, *args, **kwargs):
 
 # Mappings from strings to environments
 isaacgym_task_map = {
-    "FrankaCubeMove" : FrankaCubeMove
+    "FrankaCubeMove" : FrankaCubeMove,
+    "FrankaTwoCubesMove" : FrankaTwoCubesMove
 }
