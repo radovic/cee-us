@@ -153,12 +153,15 @@ class TorchMpcICem(MpcController):
             else:
                 self.start_states_ = [None] * self.num_sim_traj * self.num_envs
 
+            # forward pass through the model, flatten the env dimension onto the batch dimension.
             rb = self.forward_model.predict_n_steps(
                 start_observations=self.start_obs_.reshape(-1, self.start_obs_.shape[-1]),
                 start_states=self.start_states_,
                 policy=OpenLoopPolicy(action_sequences.reshape(-1, action_sequences.shape[-2], action_sequences.shape[-1])),
                 horizon=self.horizon,
             )[0]
+
+            # reverse the flattening of the env dimension.
             for k in rb.buffer.keys():
                 if self._ensemble_size:
                     rb.buffer[k] = rb.buffer[k].reshape(self.num_envs, self.num_sim_traj, self._ensemble_size, self.horizon, rb.buffer[k].shape[-1])
@@ -168,6 +171,27 @@ class TorchMpcICem(MpcController):
 
     @torch.no_grad()
     def beginning_of_rollout(self, *, observation, state=None, mode):
+        """
+        Called at the beginning of each rollout. Resets internal variables and
+        sets up for evaluation.
+
+        Args:
+            observation (obj): The initial observation.
+            state (optional): The initial state. Defaults to None.
+            mode (str): The mode of operation, e.g. 'train' or 'eval'.
+
+        Notes:
+            - Resets the mean and standard deviation of the policy.
+            - Sets elite samples to None.
+            - Sets a flag indicating that the internal state has been reset.
+            - Calculates the total number of model evaluations required per step
+            based on the horizon length, number of simultaneous trajectories,
+            and factor for decreasing the number of trajectories over iterations.
+
+        Returns:
+            None
+        """
+        
         super().beginning_of_rollout(observation=observation, state=state, mode=mode)
         self.reset_mean(self.mean_, self.relative_init)
         self.reset_std(self.std_, self.relative_init)
@@ -214,9 +238,28 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def sample_action_sequences(self, obs, num_traj, time_slice=None):
         """
-        :param num_traj: number of trajectories
-        :param obs: current observation
-        :type time_slice: slice
+        Samples action sequences for the specified number of trajectories and 
+        optional time slice.
+
+        Args:
+            obs (obj): The current observation.
+            num_traj (int): The number of trajectories to sample.
+            time_slice (optional): A slice object specifying the time steps to 
+            consider. Defaults to None, which means all time steps are considered.
+
+        Returns:
+            torch.Tensor: The sampled action sequences with shape `(num_envs, 
+            num_traj, horizon, d)` where `d` is the dimensionality of the actions.
+
+        Notes:
+            - If colored noise is enabled, it uses a power-law distributed Gaussian 
+            process to generate samples.
+            - Otherwise, it simply draws samples from a normal distribution and 
+            scales them according to the mean and standard deviation of the policy.
+            - The sampled action sequences are then clipped to ensure they lie 
+            within the valid action range (as defined by `action_low_tensor` and 
+            `action_high_tensor`).
+
         """
 
         # colored noise
@@ -260,16 +303,35 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def elites_2_action_sequences(self, *, elites, obs, fraction_to_be_used=1.0):
         """
-        :param obs: current observation of shape [obs_dim]
-        :param fraction_to_be_used:
-        :type elites: RolloutBuffer
+        Converts elite actions to action sequences and concatenates them with the 
+        sampled next action.
+
+        Args:
+            elites (RolloutBuffer): The buffer containing elite actions.
+            obs (torch.Tensor): The current observation of shape `[obs_dim]`.
+            fraction_to_be_used (float, optional): The fraction of elite actions to 
+            use. Defaults to 1.0, which means all elite actions are used.
+
+        Returns:
+            torch.Tensor: The concatenated action sequences with shape `(p, h+1, d)` 
+            where `h` is the horizon and `d` is the dimensionality of the actions.
+
+        Notes:
+            - This method first extracts the elite actions from the given buffer.
+            - It then selects a fraction of these elite actions (based on the 
+            provided fraction) to use as the starting point for the action sequence.
+            - The remaining time steps are sampled using `sample_action_sequences` 
+            with the provided observation and the number of elites used.
         """
+
         actions = elites.as_array("actions").to(torch_helpers.device)  # shape: [p,h,d]
+        
         if self._ensemble_size:
             # taking action seq of first model (they are all the same anyway)
             reused_actions = actions[:, :, 0, 1:]
         else:
             reused_actions = actions[:, :, 1:]  # shape: [p,h-1,d]
+        
         num_elites = int(reused_actions.shape[1] * fraction_to_be_used)
         reused_actions = reused_actions[:, :num_elites]
         # shape:[p,1,d]
@@ -280,30 +342,70 @@ class TorchMpcICem(MpcController):
     # Fine tuning
     @torch.no_grad()
     def randomize_first_actions(self, *, action_sequence, obs, num_traj):
+        """
+        Randomizes the first actions of an action sequence.
+
+        Args:
+            action_sequence (torch.Tensor): The original action sequence with shape 
+            `(h, d)`.
+            obs (torch.Tensor): The current observation.
+            num_traj (int): The number of trajectories to generate.
+
+        Returns:
+            torch.Tensor: The modified action sequence with random first actions and 
+            shape `(num_traj, h, d)`.
+
+        Notes:
+            - This method is only called when `use_async_action` is False.
+            - It generates new random first actions using `sample_action_sequences` 
+            and then replaces the original first actions in the given action sequence.
+        """
         assert not self.use_async_action
         new_first_actions = torch.squeeze(
             self.sample_action_sequences(time_slice=(0, 1), obs=obs, num_traj=num_traj),
-            axis=1,
-        )  # shape:[p,d]
-        action_sequence = action_sequence[None, ...]  # shape: [h,d] -> [1,h,d]
-        action_sequence_repeated = action_sequence.expand(num_traj, -1, -1)
-        action_sequence_repeated[:, 0, :] = new_first_actions
+            axis=2,
+        )  # shape:[n_envs, p, d]
+        if action_sequence.ndim == 4:
+            action_sequence = action_sequence[:, 0, ...].squeeze(1)  # shape: [n_envs, e, h, d] -> [n_envs, h, d]
+        action_sequence = action_sequence[:, None, ...]  # shape: [n_envs, h, d] -> [n_envs, 1, h, d]
+        action_sequence_repeated = action_sequence.expand(-1, num_traj, -1, -1) # shape: [n_envs, p, h, d]
+        action_sequence_repeated = action_sequence_repeated.clone() # to avoid errors with inplace operations
+        action_sequence_repeated[..., 0, :] = new_first_actions # 
         return action_sequence_repeated
 
     @torch.no_grad()
     def get_action(self, obs, state, mode="train"):
+        """
+        Get the next action to take in the environment.
 
+        Args:
+            obs (torch.tensor): The current observation.
+            state: The current state of the environment.
+            mode (str): The mode of operation. Defaults to "train".
+
+        Returns:
+            torch.tensor: The next action to take.
+
+        Raises:
+            AttributeError: If `beginning_of_rollout()` has not been called before.
+
+        Notes:
+            This function simulates a trajectory of actions and evaluates their 
+            costs.
+            It then selects the best action based on these costs. The 
+            `forward_model_state`
+            is updated after each iteration. If `mode` is "train", this function also
+            updates the distributions used for selecting actions.
+        """
         if not self.was_reset:
             raise AttributeError("beginning_of_rollout() needs to be called before")
 
+        # get the starting state for stateful models.
         self.forward_model_state = self.forward_model.got_actual_observation_and_env_state(
             observation=obs, env_state=state, model_state=self.forward_model_state
         )
 
         best_traj_idx = None
-
-        # start_obs = np.empty((self.forward_model.ensemble_params['n'], self.num_sim_traj, obs.shape[0]))
-        # start_obs[...,:] = obs
         start_obs = torch.tensor(obs, dtype=torch.float32)
         self.start_obs_[..., :] = start_obs[:, None, :]
 
@@ -357,10 +459,10 @@ class TorchMpcICem(MpcController):
                 def display_cost(cost):
                     return cost / self.horizon if self.cost_along_trajectory == "sum" else cost
 
-                if simulated_paths["actions"][best_traj_idx].ndim == 5:
-                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), :,  best_traj_idx, :][0][0][0]
+                if simulated_paths["actions"].ndim == 5:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, 0, :]
                 else:
-                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0][0]
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :]
                 print(
                     "iter {}:{} --- best cost: {:.2f} --- mean: {:.2f} --- worst: {:.2f}  best action: {}...".format(
                         i,
@@ -368,34 +470,47 @@ class TorchMpcICem(MpcController):
                         display_cost(torch.amin(self.costs_).item()),
                         display_cost(torch.mean(self.costs_).item()),
                         display_cost(torch.amax(self.costs_).item()),
-                        best_actions[0:6].cpu().numpy(),
+                        best_actions[..., 0:6].cpu().numpy(),
                     )
                 )
 
             self.update_distributions(simulated_paths, self.costs_)
 
         if self.finetune_first_action:
+
+            # Get the best action sequences
             best_rollout_before = simulated_paths[torch.arange(self.num_envs), best_traj_idx, :, :]
+            for k, v in best_rollout_before.items(): # allow for extending the rollout buffer
+                best_rollout_before[k] = v.unsqueeze(1)
             best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :]
             action_sequences = self.randomize_first_actions(
                 action_sequence=best_actions, num_traj=num_sim_traj, obs=obs
             )
+
+            # Simulate new trajectories with the randomized first actions
             simulated_paths = self.simulate_trajectories(
                 obs=obs,
                 state=self.forward_model_state,
                 action_sequences=action_sequences,
             )
-            simulated_paths = simulated_paths.reshape(self.num_envs, self.num_sim_traj, self.horizon, -1)
+
             # also add last best traj to not regret
-            simulated_paths.append(best_rollout_before)
-            orig_cost = self.trajectory_cost_fn(self.cost_fn, simulated_paths)  # shape: [num_sim_paths]
-            costs = orig_cost.copy()
+            simulated_paths.extend(best_rollout_before)
+            orig_cost = None
+            orig_cost = self.trajectory_cost_fn(self.cost_fn, simulated_paths, orig_cost)  
+            if self._ensemble_size:
+                orig_cost = orig_cost[..., 0]
+            # shape: [num_sim_paths]
+            costs = orig_cost.clone()
 
             best_traj_idx = torch.argmin(costs, axis=1)
 
             if self.verbose:
-                best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, :, :][0]
-                print("best first action after finetuning ({})       {}".format(num_sim_traj, best_actions[0:6]))
+                if self._ensemble_size:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, 0, :]
+                else:
+                    best_actions = simulated_paths['actions'][torch.arange(self.num_envs), best_traj_idx, 0, :]
+                print("best first action after finetuning ({})       {}".format(num_sim_traj, best_actions[..., 0:6]))
 
         if self.execute_best_elite:
             if self.use_async_action:
@@ -463,8 +578,25 @@ class TorchMpcICem(MpcController):
     @torch.no_grad()
     def update_distributions(self, sampled_trajectories: SimpleRolloutBuffer, costs):
         """
-        :param sampled_trajectories:
-        :param costs: array of costs: shape (number trajectories)
+        Updates the mean and standard deviation of the policy distribution based on 
+        the elite trajectories.
+
+        Parameters:
+            sampled_trajectories (SimpleRolloutBuffer): The set of sampled 
+            trajectories to consider.
+            costs (array_like): An array of costs corresponding to each trajectory, 
+            shape `(num_trajectories,)`
+
+        Returns:
+            None
+
+        Notes:
+            - This method updates the mean and standard deviation of the policy 
+                distribution based on the elite trajectories.
+            - If `fully_deterministic` is True, the sorting of the costs is done in a
+                stable manner to ensure consistent results.
+            - The ensemble size (i.e., the number of elite samples) is used to 
+                calculate the new mean and standard deviation.
         """
         if self.fully_deterministic:
             # FOR STABLE SORTING!!!
