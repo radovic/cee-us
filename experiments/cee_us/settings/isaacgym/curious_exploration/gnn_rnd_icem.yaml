@@ -46,3 +46,31 @@ checkpoints:
 working_dir: "results/cee_us/vectorized_ig/gnn_rnd_icem_freeplay"
 
 device: "cuda:0"
+
+
+# for quick debugging
+# eval_buffers: []
+# seed: 2024
+
+# number_of_rollouts: 1
+# training_iterations: 10
+
+# rollout_params:
+#     render: false
+#     task_horizon: 5
+
+# horizon: 3
+
+# controller_params:
+#   horizon: 3
+#   cost_along_trajectory: "best"
+#   num_simulated_trajectories: 8
+#   action_sampler_params: 
+#     elites_size: 4
+
+# checkpoints:
+#     save_every_n_iter: 2
+
+# working_dir: "results/cee_us/vectorized_ig/gnn_rnd_icem_freeplay"
+
+# device: "cuda:0"

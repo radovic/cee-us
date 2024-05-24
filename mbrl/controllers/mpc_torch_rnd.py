@@ -308,7 +308,7 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
         self._model_epistemic_costs(rollout_buffer)
 
         costs_path = -self._rnd_bonus_per_path
-
+        
         if self._w_extrinsic_reward:
             env_cost = cost_fn(
                 rollout_buffer.as_array("observations"),

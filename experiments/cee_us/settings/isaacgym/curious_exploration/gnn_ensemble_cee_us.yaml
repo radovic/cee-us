@@ -24,23 +24,23 @@ eval_buffers: []
 seed: 2024
 
 number_of_rollouts: 1
-training_iterations: 305
+training_iterations: 10
 
 rollout_params:
     render: false
-    task_horizon: 100
+    task_horizon: 5
 
-horizon: 30
+horizon: 3
 
 controller_params:
-  horizon: 30
+  horizon: 3
   cost_along_trajectory: "best"
-  num_simulated_trajectories: 128
+  num_simulated_trajectories: 8
   action_sampler_params: 
-    elites_size: 10
+    elites_size: 4
 
 checkpoints:
-    save_every_n_iter: 25
+    save_every_n_iter: 2
 
 working_dir: "results/cee_us/vectorized_ig/gnn_ensemble_cee_us_freeplay"
 
