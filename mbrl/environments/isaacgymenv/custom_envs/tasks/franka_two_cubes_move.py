@@ -710,8 +710,8 @@ class FrankaTwoCubesMove(VecTask):
             cube_to_target_dist = torch.linalg.norm(sampled_cube_state[:, :2] - sampled_target_state[:, :2], dim=-1)
             cube2_to_target2_dist = torch.linalg.norm(sampled_cube2_state[:, :2] - sampled_target2_state[:, :2], dim=-1)
             cube_to_cube2_dist = torch.linalg.norm(sampled_cube_state[:, :2] - sampled_cube2_state[:, :2], dim=-1)
-            #active_idx = torch.nonzero((cube_to_cube2_dist < min_dists_cubes) | (cube_to_target_dist < min_dists_target), as_tuple=True)[0]
-            active_idx = torch.nonzero((cube_to_cube2_dist < min_dist_cube_to_cube) | (cube2_to_target2_dist < min_dist_target_to_target) | (cube_to_target_dist < min_dists_cube_target), as_tuple=True)[0]
+            target_to_target2_dist = torch.linalg.norm(sampled_target_state[:, :2] - sampled_target2_state[:, :2], dim=-1)
+            active_idx = torch.nonzero((cube_to_cube2_dist < min_dist_cube_to_cube) | (cube2_to_target2_dist < min_dist_cube_to_target) | (cube_to_target_dist < min_dist_cube_to_target) | (target_to_target2_dist < min_dist_target_to_target), as_tuple=True)[0]
             num_active_idx = len(active_idx)
 
             # If active idx is empty, then all sampling is valid
