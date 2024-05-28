@@ -101,10 +101,10 @@ class FrankaCubeMove(VecTask):
             "Invalid control type specified. Must be one of: {osc, joint_tor}"
 
         # dimensions
-        # obs include: cube_pose (7) + target_pos (3) + eef_pose (3) + q_gripper (2)
-        self.cfg["env"]["numObservations"] = 15 if self.control_type == "osc" else 22
-        # actions include: delta EEF if OSC (3) or joint torques (7) + bool gripper (1)
-        self.cfg["env"]["numActions"] = 4 if self.control_type == "osc" else 8
+        # obs include: cube_pose (7) + cube_velocity (3+3) target_pos (3) + eef_pose (7) + eef_velocity (3+3) + q_gripper (2)
+        self.cfg["env"]["numObservations"] = 31 if self.control_type == "osc" else 22
+        # actions include: delta EEF if OSC (6) or joint torques (7) + bool gripper (1)
+        self.cfg["env"]["numActions"] = 7 if self.control_type == "osc" else 8
 
         # Values to be filled in at runtime
         self.states = {}                        # will be dict filled with relevant states to use for reward calculation
@@ -430,9 +430,11 @@ class FrankaCubeMove(VecTask):
             "eef_vel": self._eef_state[:, 7:],
             "eef_lf_pos": self._eef_lf_state[:, :3],
             "eef_rf_pos": self._eef_rf_state[:, :3],
+            
             # Cubes
             "cube_quat": self._cube_state[:, 3:7],
             "cube_pos": self._cube_state[:, :3],
+            "cube_vel": self._cube_state[:, 7:],
             "cube_pos_relative": self._cube_state[:, :3] - self._eef_state[:, :3],
             "target_quat": self._target_state[:, 3:7],
             "target_pos": self._target_state[:, :3],
@@ -469,7 +471,7 @@ class FrankaCubeMove(VecTask):
 
     def compute_observations(self):
         self._refresh()
-        obs = ["cube_quat", "cube_pos", "cube_to_target_pos", "eef_pos"]
+        obs = ["cube_pos", "cube_quat", "cube_vel", "cube_to_target_pos", "eef_pos", "eef_quat", "eef_vel"]
         obs += ["q_gripper"] if self.control_type == "osc" else ["q"]
         self.obs_buf = torch.cat([self.states[ob] for ob in obs], dim=-1)
         maxs = {ob: torch.max(self.states[ob]).item() for ob in obs}
@@ -484,17 +486,17 @@ class FrankaCubeMove(VecTask):
             obs = np.expand_dims(np.expand_dims(obs, axis=0), axis=0)
 
         state_dict = {
-            "agent": obs[..., 10:],
-            "objects_dyn": np.concatenate((obs[..., 4:7], obs[..., :4]), axis=-1).reshape(1, obs.shape[0], obs.shape[1], 7),
-            "objects_static": (obs[..., 4:7] + obs[..., 7:10]).reshape(1, obs.shape[0], obs.shape[1], 3),
+            "agent": obs[..., 16:],
+            "objects_dyn": obs[..., :16].reshape(1, obs.shape[0], obs.shape[1], 16),
+            "objects_static": np.array([None]),
         }
         return state_dict
     
     # TODO: Improve this function to be more general
     def get_object_dims(self):
-        agent_dim = 5
-        object_dyn_dim = 7
-        object_stat_dim = 3
+        agent_dim = 15
+        object_dyn_dim = 16
+        object_stat_dim = 0
         nObj = 1
         return agent_dim, object_dyn_dim, object_stat_dim, nObj
 
@@ -676,20 +678,13 @@ class FrankaCubeMove(VecTask):
         # print(self.cmd_limit, self.action_scale)
 
         # Control arm (scale value first)
+        '''
+        to fix the eef to be vertical:
         if self.control_type == "osc":
-            '''
-            # TEST: Trying to fix orientation
-            current = self.states["eef_quat"]
-            cc = quat_conjugate(current)
-            desired = torch.ones_like(current)
-            desired[:, [2, 3]] = 0
-            desired /= torch.norm(desired)
-            q_r = quat_mul(desired, cc)
-            orientation_offset = q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1) * 100
-            '''
             orientation_offset = torch.zeros_like(u_arm)
             u_arm = torch.cat([u_arm, orientation_offset], dim=-1)
-            
+        '''    
+        
         u_arm = u_arm * self.cmd_limit / self.action_scale
 
         if self.control_type == "osc":

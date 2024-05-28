@@ -27,6 +27,12 @@ def interaction_tracker_hook(_locals, _globals, **kwargs):
         rel_time = np.mean( np.sum(moved_objects_indices[i,:], axis=0) / factor_for_relative_scaling )
         metrics[obj_name + '_rel_time'] = rel_time
         logger.log(rel_time, key=obj_name + '_rel_time')
+    
+    moved_at_least_one = np.sum(moved_objects_indices, axis=0) >= 1
+    rel_time = np.mean(moved_at_least_one / factor_for_relative_scaling)
+    metrics['any_object_rel_time'] = rel_time
+    logger.log(rel_time, key='any_object_rel_time')
+
 
 
 

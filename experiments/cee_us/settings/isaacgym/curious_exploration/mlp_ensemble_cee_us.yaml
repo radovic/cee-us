@@ -29,14 +29,14 @@ training_iterations: 305
 
 rollout_params:
     render: false
-    task_horizon: 100
+    task_horizon: 10
 
 horizon: 30
 
 controller_params:
   horizon: 30
   cost_along_trajectory: "best"
-  num_simulated_trajectories: 128
+  num_simulated_trajectories: 16
   action_sampler_params: 
     elites_size: 10
 

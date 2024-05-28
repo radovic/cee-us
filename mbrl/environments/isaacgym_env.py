@@ -53,7 +53,4 @@ class IsaacGym(IsaacSimGroundTruthSupportEnv, IsaacGymEnv):
         :param agent_dim: State dimension for the agent
         :param object_dim: State dimension for a single object
         """
-        try:
-            return self.ig_env.compute_object_centric_observation(obs, agent_dim, object_dim, object_static_dim)
-        except:
-            raise NotImplementedError("Getting object-centric observations is not implemented yet.")
+        return self.ig_env.compute_object_centric_observation(obs, agent_dim, object_dim, object_static_dim)
