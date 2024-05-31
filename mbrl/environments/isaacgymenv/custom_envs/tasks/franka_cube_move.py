@@ -142,6 +142,9 @@ class FrankaCubeMove(VecTask):
         self.up_axis = "z"
         self.up_axis_idx = 2
 
+        # obs include: cube_pose (7) + cube_velocity (3+3) target_pos (3) + eef_pose (7) + eef_velocity (3+3) + q_gripper (2)
+        self.goal_idx = [13, 14, 15]
+
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
         # Franka defaults
@@ -457,12 +460,14 @@ class FrankaCubeMove(VecTask):
         )
     
     def compute_reward_sas(self, observations, actions, next_observations):
+        
+        # obs include: cube_pose (7) + cube_velocity (3+3) target_pos (3) + eef_pose (7) + eef_velocity (3+3) + q_gripper (2)
         next_states = {
             'target_size': self.states['target_size'],
             'cube_size': self.states['cube_size'],
-            'cube_pos': next_observations[..., 4:7],
-            'cube_pos_relative': next_observations[..., 4:7] - next_observations[..., 10:13],
-            'cube_to_target_pos': next_observations[..., 7:10],
+            'cube_pos': next_observations[..., :3],
+            'cube_pos_relative': next_observations[..., :3] - next_observations[..., 16:19],
+            'cube_to_target_pos': next_observations[..., 13:16],
         }
         rewards, _ = compute_franka_reward(
             self.reset_buf, self.progress_buf, actions, next_states, self.reward_settings, self.max_episode_length

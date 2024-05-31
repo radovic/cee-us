@@ -152,6 +152,9 @@ class FrankaTwoCubesMove(VecTask):
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
+        # Target distance indexes
+        self.goal_idx = [13, 14, 15, 29, 30, 31]
+
         # Franka defaults
         self.franka_default_dof_pos = to_torch(
             [0, 0.1963, 0, -2.6180, 0, 2.9416, 0.7854, 0.035, 0.035], device=self.device
@@ -516,28 +519,17 @@ class FrankaTwoCubesMove(VecTask):
         )
     
     def compute_reward_sas(self, observations, actions, next_observations):
-        """
-            Computation of the relative position of cube to target requires the next_observation to carry
-            information about the target position. This is not possible with the current state of GNN, as we're forced
-            to yield the position of the target in the observation, as every single observation HAS to be an object in the env
-            for GNN to run. By yielding the relative position, we're including a non-object measurement into the observation
-            which would crash the current GNN implementation.
-
-            We suggest some form of masking out the target position in the observation,
-            to still be able to return the positions for the target used to compute the relative position
-            needed for reward computation. This solution would conform to the GNN implementation.
-        """
-        raise NotImplementedError
-        # observation: cube_quat (4) + cube_pos (3), cube2 quat (4) + cube2_pos (3), + eef_pose (3) + q_gripper (2) = 19
+        
+        # obs include: (cube_pose (7) + cube_velocity (3+3) + target_pos (3)) * 2 + eef_pose (7) + eef_velocity (3+3) + q_gripper (2)
         next_states = {
             'target_size': self.states['target_size'],
             'cube_size': self.states['cube_size'],
-            'cube_pos': next_observations[..., 4:7], # 0-4 c1 rotation, 4-7 c1 pos, 7-11 c2 rotation, 11-14 c2 pos, 14-17 eef pos
-            'cube2_pos': next_observations[..., 11:14],
-            'cube_to_eef_pos': next_observations[..., 4:7] - next_observations[..., 14:17],
-            'cube2_to_eef_pos': next_observations[..., 11:14] - next_observations[..., 14:17],
-            'cube_to_target_pos': next_observations[..., 4:7], # TODO: chage indexing
-            'cube2_to_target2_pos': next_observations[..., 18:21], # TODO: chage indexing
+            'cube_pos': next_observations[..., :3], # 0-4 c1 rotation, 4-7 c1 pos, 7-11 c2 rotation, 11-14 c2 pos, 14-17 eef pos
+            'cube2_pos': next_observations[..., 16:19],
+            'cube_to_eef_pos': next_observations[..., :3] - next_observations[..., 32:35],
+            'cube2_to_eef_pos': next_observations[..., 16:19] - next_observations[..., 32:35],
+            'cube_to_target_pos': next_observations[..., 13:16],
+            'cube2_to_target2_pos': next_observations[..., 29:32],
         }
         rewards, _ = compute_franka_reward(
             self.reset_buf, self.progress_buf, self.actions, next_states, self.reward_settings, self.max_episode_length
@@ -570,7 +562,7 @@ class FrankaTwoCubesMove(VecTask):
     # TODO: Improve this function to be more general
     def get_object_dims(self):
         agent_dim = 15
-        object_dyn_dim = 16 
+        object_dyn_dim = 13 
         object_stat_dim = 0
         nObj = 2 # two cubes
         return agent_dim, object_dyn_dim, object_stat_dim, nObj
