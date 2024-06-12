@@ -20,7 +20,7 @@ forward_model_params:
     use_input_normalization: true
     use_output_normalization: true
     target_is_delta: true
-    normalize_w_running_stats: true
+    normalize_w_running_stats: false
     
 
 

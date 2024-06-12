@@ -47,6 +47,7 @@ class Controller(ABC):
     # noinspection PyUnusedLocal
     def __init__(self, *, env: Env):
         self.env = env
+        self.num_envs = (env.num_envs if hasattr(env, 'num_envs') else 1) if env else None
 
     @abstractmethod
     def get_action(self, obs, state, mode="train"):

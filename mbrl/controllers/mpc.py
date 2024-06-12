@@ -82,8 +82,8 @@ class MpcController(ModelBasedController, StatefulController, ABC):
         :param action_sequences: shape: [p,h,d]
         """
         num_parallel_trajs = action_sequences.shape[0]
-        start_obs = np.array([obs] * num_parallel_trajs)  # shape:[p,d]
-        start_states = [state] * num_parallel_trajs
+        start_obs = np.array([[obs] * num_parallel_trajs] * self.num_envs)  # shape:[p,d]
+        start_states = [[state] * num_parallel_trajs] * self.num_envs
         current_sim_policy = OpenLoopPolicy(action_sequences)
         return self.forward_model.predict_n_steps(
             start_observations=start_obs,

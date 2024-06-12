@@ -12,7 +12,8 @@ class ControllerFactory:
         "mpc-curiosity-icem-torch": (".mpc_torch_curiosity", "TorchCuriosityMpcICem"),
         "mpc-rnd-icem-torch": (".mpc_torch_rnd", "TorchRNDMpcICem"),
         "mpc-mppi-torch": (".mpc_mppi_torch", "TorchMpcMPPI"),
-        "mpc-mppi-elites-torch": (".mpc_mppi_elites_torch", "TorchMpcMPPIElites")
+        "mpc-mppi-elites-torch": (".mpc_mppi_elites_torch", "TorchMpcMPPIElites"),
+        "mpc-mppi-elites-torch-curiosity-torch": (".mpc_mppi_elites_torch_curiosity", "TorchCuriosityMpcMPPI")
     }
 
     controller = None

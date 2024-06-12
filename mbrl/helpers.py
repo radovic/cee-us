@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import functools
 import inspect
 import json
@@ -240,7 +241,8 @@ def train_dynamics_model(
 ):
 
     if forward_model is not None and isinstance(forward_model, TrainableModel):
-        rollouts = buffer["rollouts"]
+        rollouts = copy.deepcopy(buffer["rollouts"])
+        rollouts.to_train()
         eval_rollouts = buffer.get("rollouts_eval_model", None)
         forward_model.train(rollouts, eval_rollouts)
 

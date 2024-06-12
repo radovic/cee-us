@@ -24,7 +24,32 @@ def weight_init(m):
 
 
 class RMS(object):
-    """running mean and std"""
+    """
+    Running Mean and Standard Deviation (RMS) Calculator.
+
+    This class calculates the running mean and standard deviation of a given 
+    input tensor.
+    
+    Parameters:
+        device: The device (e.g. 'cude:0') where the RMS calculator will be run
+        epsilon: A small value added to the numerator of the running mean calculation
+            to prevent division by zero. Defaults to 1e-4.
+        shape: The shape of the internal buffers for mean and standard deviation,
+            which should match the expected input tensor shape. Defaults to (1,).
+
+    Methods:
+        __call__(x): Calculates the running mean and standard deviation of a 
+            given input tensor `x`.
+            Returns the updated running mean and standard deviation.
+
+    Notes:
+        - This implementation uses the Welford's algorithm 
+            (https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance)
+            for online calculation of the mean and variance.
+        - The RMS calculator maintains its own internal state, which is updated 
+            each time it processes an input tensor.
+
+    """
 
     def __init__(self, device, epsilon=1e-4, shape=(1,)):
         self.M = torch.zeros(shape).to(device)
@@ -47,6 +72,35 @@ class RMS(object):
 
 
 class RND(nn.Module):
+    """
+    Random Network Distillation (RND) model.
+
+    This module implements the Random Network Distillation (RND) algorithm, which
+    learns to predict the behavior of an agent in a given environment. The
+    predictions are based on observations from the environment and are used to
+    regularize the agent's policy updates.
+
+    Parameters:
+        - `model_params`: A dictionary of hyperparameters for the RND model.
+            This includes parameters such as the observation dimension, the 
+            number
+            of layers in the predictor and target networks, etc.
+        - `clip_val` (optional): The value to clip observations to. Defaults to 
+            5.0.
+
+    Attributes:
+        - `predictor`: A neural network that predicts the behavior of the agent.
+        - `target`: A neural network that serves as a teacher for the predictor.
+                    `requires_grad` is set to False for this Module. 
+        - `obs_normalizer`: A normalizer for the observations.
+
+
+    Methods:
+        - `_parse_model_params` : Parses the model parameters and sets the
+            attributes accordingly.
+        - `forward` : Computes the prediction error between the predictor's
+            predictions and the target network's outputs.
+    """
     def __init__(self, model_params, clip_val=5.0):
 
         super().__init__()
@@ -169,6 +223,8 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
 
         loss = prediction_error.mean()
 
+        # gradients flow only to the predictor, as requires_grad is
+        # set False for the target net.
         self.rnd_opt.zero_grad(set_to_none=True)
         loss.backward()
         self.rnd_opt.step()
@@ -178,7 +234,7 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
     @torch.no_grad()
     def _update_normalizer(self, rollout_buffer: RolloutBuffer):
         latest_observations = rollout_buffer.latest_rollouts["observations"]
-        self.rnd.obs_normalizer.update(self.env.obs_preproc(latest_observations))
+        self.rnd.obs_normalizer.update(self.env.obs_preproc(latest_observations.reshape(-1, latest_observations.shape[-1])))
 
     def train_rnd(self, rollout_buffer: RolloutBuffer):
         self._update_normalizer(rollout_buffer)
@@ -239,9 +295,9 @@ class TorchRNDMpcICem(TrainableController, TorchMpcICem):
 
     def _model_epistemic_costs(self, rollout_buffer: RolloutBuffer):
 
-        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [p,h,obs_dim]
+        mean_next_obs = rollout_buffer.as_array("next_observations")  # shape: [nenvs, p,h,obs_dim]
         rnds_of_samples_ = self.compute_intr_reward(mean_next_obs.reshape(-1, self.env.observation_space.shape[0]))
-        self._rnd_bonus_per_path = rnds_of_samples_.view(-1, self.horizon)  # [p,h]
+        self._rnd_bonus_per_path = rnds_of_samples_.view(mean_next_obs.shape[0], mean_next_obs.shape[1], self.horizon)  # [nenvs, p, h]
 
     @torch.no_grad()
     def trajectory_cost_fn(self, cost_fn, rollout_buffer: RolloutBuffer, out: torch.Tensor):

@@ -44,14 +44,13 @@ class IsaacSimGroundTruthSupportEnv(ABC):
         return new_obs, new_state, r
     
     # === Implemented specifically for IsaacGym ===
-    # noinspection PyPep8Naming
+    # TODO: Implement the method for setting the ground truth state
     def set_GT_state(self, state):
-        self.ig_env.gym.set_sim_params(self.ig_env.sim, state)
-        self.ig_env.gym.simulate(self.ig_env.sim)
+        pass
 
-    # noinspection PyPep8Naming
+    # TODO: Implement the method for getting the ground truth state
     def get_GT_state(self):
-        return self.ig_env.gym.get_sim_params(self.ig_env.sim)
+        return None
 
     # noinspection PyMethodMayBeStatic
     def prepare_for_recording(self):
@@ -75,8 +74,8 @@ class IsaacSimGroundTruthSupportEnv(ABC):
         return self.reset()
 
     def get_fps(self):
-        if hasattr(self, "dt"):
-            return int(np.round(1.0 / self.dt))
+        if hasattr(self.ig_env, "dt"):
+            return int(np.round(1.0 / self.ig_env.dt))
         elif hasattr(self, "metadata") and "video.frames_per_second" in self.metadata:
             return self.metadata["video.frames_per_second"]
         else:
