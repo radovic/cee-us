@@ -1,24 +1,50 @@
-plan_horizon = 30
-task_horizon = 100
-num_traj = 128
-num_rollouts = 20
-num_elites = 10
-
-| Model    | n_envs=1 | n_envs=3 |
-| -------- |  ------- | ------- |
-| mlp_rnd  | x        |x        |
-| mlp_ens  | x        |x        |
-| gnns     | x        |x        |
-| gnn_rnd  | x        |x        |
-
 # Curious Exploration via Structured World Models Yields Zero-Shot Object Manipulation
 
 <p align="center">
 <img src="docs/images/cee_us_summary.gif" width="500"/>
 </p>
 
-This repository contains the code release for the paper [Curious Exploration via Structured World Models Yields Zero-Shot Object Manipulation](https://arxiv.org/abs/2206.11403) by Cansu Sancaktar, Sebastian Blaes, and Georg Martius, published as a poster at [*NeurIPS 2022*](https://neurips.cc/virtual/2022/poster/53198). Please use the [provided citation](#citation) when making use of our code or ideas.
+This repository contains the code release for the paper [Curious Exploration via Structured World Models Yields Zero-Shot Object Manipulation](https://arxiv.org/abs/2206.11403) by Cansu Sancaktar, Sebastian Blaes, and Georg Martius, published as a poster at [*NeurIPS 2022*](https://neurips.cc/virtual/2022/poster/53198). Please use the [provided citation](#citation) when making use of our code or ideas. On top of Mujoco environments used in the paper, Isaac Gym support and parallel training are added. 
+
 ## Installation
+### Installation for Isaac Gym (tested on Ubuntu 20.04 and 22.04)
+1. Install [conda](https://docs.anaconda.com/free/miniconda/).
+2. Create the conda environment from the environment.yml (ADD LINK):
+```bash
+conda env create -f environment.yml
+```
+3. Get [NVIDIA Omniverse](https://www.nvidia.com/en-us/omniverse/) and install Isaac Sim.
+4. Search for Isaac Gym and download it.
+5. Clone the [isaacgymenvs repository](https://github.com/isaac-sim/IsaacGymEnvs).
+6. Install Isaac Gym in your environment:
+```bash
+cd /path/to/your/isaacgym/python
+conda run -n ceeus_env pip install -e .
+```
+7. Install isaacgymenvs in your environment:
+```bash
+cd /path/to/your/isaacgymenvs/
+conda run -n ceeus_env pip install -e .
+```
+8. Clone this repository and install the `ceeus` package:
+```bash
+cd /path/to/your/cee-us
+conda run -n ceeus_env pip install -e .
+```
+9. Go into `src/smart-settings` and do:
+```
+conda run -n ceeus_env pip install -e .
+``` 
+10. Export the path to the repository:
+```bash
+export PYTHONPATH=$PYTHONPATH:<path/to/your/ceeus>
+``` 
+11. (Optionally) If you want to use the same environment for running the Mujoco environments, then downgrade `gym` to `0.17.2`:
+```bash
+conda run -n ceeus_env pip install gym==0.17.2
+```
+
+### Installation for Mujoco
 
 1. Install and activate a new python3.8 virtualenv.
 ```bash
