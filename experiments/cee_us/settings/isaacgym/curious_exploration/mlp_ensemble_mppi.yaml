@@ -24,8 +24,8 @@ eval_buffers: []
 seed: 2024
 
 
-number_of_rollouts: 3
-training_iterations: 100
+number_of_rollouts: 1
+training_iterations: 305
 
 rollout_params:
     render: false

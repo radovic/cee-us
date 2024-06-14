@@ -29,7 +29,7 @@ training_iterations: 305
 
 rollout_params:
     render: false
-    task_horizon: 10
+    task_horizon: 100
 
 horizon: 30
 
